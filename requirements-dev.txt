@@ -1,0 +1,6 @@
+# Development / packaging / verification dependencies.
+# (End users do not need any of these - the portable build is self-contained.)
+pywebview>=5.0        # desktop window shell (WebView2 on Windows)
+pyinstaller>=6.0      # packaging into the portable folder
+pillow>=10.0          # icon generation
+playwright>=1.40      # headless rendering verification (tools/verify.py)

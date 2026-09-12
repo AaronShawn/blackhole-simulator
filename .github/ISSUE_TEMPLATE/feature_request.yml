@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest a physics effect, rendering feature or UI improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of change
+      options:
+        - Physics fidelity (new effect / better solver)
+        - Visual quality / performance
+        - UI / UX
+        - Packaging / tooling / docs
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: References or implementation notes
+      description: Papers, equations, or how you would approach it.
+    validations:
+      required: false

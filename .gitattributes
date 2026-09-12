@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.pyd binary
+*.dll binary
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf

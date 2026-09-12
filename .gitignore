@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Node (only used to vendor three.js)
+node_modules/
+npm-debug.log*
+
+# WebView2 runtime profile created next to the exe
+userdata/
+
+# Local scratch
+work/
+*.log
+*.tmp
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets
+.env
+*.token
+
+# Screenshots: the README uses the optimised .webp copies. Local PNG exports
+# (tools/shot.py, tools/verify.py) stay out of the repository.
+docs/*.png
+docs/screens/

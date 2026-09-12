@@ -1,0 +1,55 @@
+name: Bug report
+description: Something renders wrong, crashes, or behaves unexpectedly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! The diagnostics overlay in the top-right corner of the
+        window (GPU / buffer size / FPS) is very useful here - please paste it.
+  - type: dropdown
+    id: how
+    attributes:
+      label: How are you running it?
+      options:
+        - Portable exe (BlackHoleSimulator.exe)
+        - python launcher.py (WebView2 window)
+        - Browser (launcher.py --browser / local http server)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get? Screenshots welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: diag
+    attributes:
+      label: Diagnostics overlay text
+      description: Copy the text from the top-right corner of the window.
+      render: text
+    validations:
+      required: false
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU / driver
+      placeholder: "e.g. NVIDIA RTX 4070, driver 560.94 / Intel UHD Graphics"
+    validations:
+      required: false
+  - type: input
+    id: os
+    attributes:
+      label: OS + display scaling
+      placeholder: "e.g. Windows 11 24H2, 175% scaling, 3000x2000"
+    validations:
+      required: false
+  - type: textarea
+    id: params
+    attributes:
+      label: Parameters
+      description: Preset plus any sliders you moved (r₀, steps, render scale, ...).
+    validations:
+      required: false

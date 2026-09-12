@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: "Schwarzschild Black Hole Simulator"
+message: "If you use this software in academic work, please cite it as below."
+type: software
+abstract: >-
+  Real-time ray tracer for Schwarzschild black holes. Every pixel is a numerically
+  integrated null geodesic (RK4, adaptive step); the accretion disk is rendered with a
+  Novikov-Thorne style temperature profile, relativistic Doppler beaming, gravitational
+  redshift, blackbody colour and volumetric radiative transfer. Includes a built-in
+  check of the apparent shadow radius against the analytic value b_c√(1-r_s/r0)/r0.
+authors:
+  - alias: "AaronShawn"
+repository-code: "https://github.com/AaronShawn/blackhole-simulator"
+license: MIT
+keywords:
+  - black hole
+  - general relativity
+  - Schwarzschild metric
+  - geodesic ray tracing
+  - gravitational lensing
+  - accretion disk
+  - WebGL
+  - three.js
+version: "1.0.0"
+date-released: "2026-09-13"

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>黑洞模拟器 · Schwarzschild 测地线光线追踪</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23070a12'/%3E%3Cellipse cx='16' cy='16' rx='13' ry='4' fill='none' stroke='%23e8a24a' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23000'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div id="app">
+
+<aside id="panel">
+  <header>
+    <div class="hrow">
+      <h1>施瓦西黑洞模拟器</h1>
+      <button id="btn-collapse" class="iconbtn" title="收起侧栏，全屏预览 (H)">◀</button>
+    </div>
+    <p class="sub">广义相对论零测地线光线追踪 · Schwarzschild 度规 · 几何单位 G=c=1</p>
+  </header>
+
+  <div class="btnrow">
+    <button id="btn-pause">⏸ 暂停时间</button>
+    <button id="btn-shot">📷 截图</button>
+    <button id="btn-measure">📐 测量阴影半径</button>
+    <button id="btn-reset">↺ 重置视角</button>
+    <button id="btn-default">默认参数</button>
+    <button id="btn-hide">全屏预览 (H)</button>
+  </div>
+
+  <div id="presets" class="presets"></div>
+  <div id="measure-out" class="measure"></div>
+  <div id="controls"></div>
+
+  <section class="grp">
+    <h3>物理读数</h3>
+    <div id="hud-phys" class="readout"></div>
+  </section>
+
+  <section class="grp">
+    <h3>运行状态</h3>
+    <div class="readout">
+      <div><span>FPS</span><b id="hud-fps">-</b></div>
+      <div><span>渲染分辨率</span><b id="hud-res">-</b></div>
+      <div><span>图形接口</span><b id="hud-webgl">-</b></div>
+      <div><span>GPU</span><b id="hud-gpu">-</b></div>
+      <div><span>累积采样</span><b id="hud-acc">-</b></div>
+    </div>
+  </section>
+
+  <footer>
+    左键拖动 = 旋转视角 · 滚轮 = 缩放 · H = 隐藏面板 · S = 截图 · 空格 = 暂停/继续<br>
+    勾选“叠加理论阴影边界”，可直接检验渲染出的阴影半径是否等于 b<sub>c</sub>√(1−r<sub>s</sub>/r₀)/r₀。
+  </footer>
+</aside>
+
+<main id="stage">
+  <canvas id="gl"></canvas>
+  <svg id="overlay" xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <circle id="shadow-circle" cx="0" cy="0" r="100" fill="none"
+            stroke="rgba(120,210,255,0.85)" stroke-width="1.2" stroke-dasharray="5 5"/>
+  </svg>
+  <div id="diag"></div>
+  <button id="btn-expand" class="iconbtn" title="展开侧栏 (H)">▶ 控制面板</button>
+</main>
+
+</div>
+
+<div id="fatal">
+  <div class="box">
+    <h2>无法初始化 WebGL2</h2>
+    <p id="fatal-msg">请更新显卡驱动，或在支持 WebGL2 的浏览器中打开 web/index.html。</p>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

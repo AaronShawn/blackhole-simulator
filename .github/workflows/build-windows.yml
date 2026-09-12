@@ -1,0 +1,66 @@
+name: build-portable-windows
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  portable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pywebview>=5" "pyinstaller>=6" "pillow>=10"
+
+      - name: Generate application icon
+        run: python tools/make_icon.py
+
+      - name: Build portable folder
+        run: |
+          pyinstaller --noconfirm --clean --windowed --onedir `
+            --name BlackHoleSimulator `
+            --icon assets/blackhole.ico `
+            --add-data "web;web" `
+            --exclude-module tkinter --exclude-module matplotlib --exclude-module numpy `
+            --exclude-module PIL --exclude-module PyQt5 --exclude-module pandas `
+            --exclude-module scipy `
+            launcher.py
+
+      - name: Bundle docs next to the exe
+        shell: pwsh
+        run: |
+          Copy-Item *.md dist/BlackHoleSimulator/ -Force
+          Copy-Item *.txt dist/BlackHoleSimulator/ -Force
+          New-Item -ItemType Directory -Force -Path dist/BlackHoleSimulator/docs | Out-Null
+          Copy-Item docs/*.webp dist/BlackHoleSimulator/docs/ -Force -ErrorAction SilentlyContinue
+
+      - name: Zip the portable folder
+        shell: pwsh
+        run: Compress-Archive -Path dist/BlackHoleSimulator/* -DestinationPath BlackHoleSimulator-win64.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackHoleSimulator-win64
+          path: BlackHoleSimulator-win64.zip
+          retention-days: 30
+
+      - name: Attach the zip to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: BlackHoleSimulator-win64.zip
+          generate_release_notes: true
