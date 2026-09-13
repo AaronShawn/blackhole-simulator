@@ -11,17 +11,26 @@ gravitational redshift and volumetric radiative transfer. [English README »](RE
 [![three.js](https://img.shields.io/badge/three.js-r186-049ef4.svg)](web/vendor/three.module.js)
 [![WebGL2](https://img.shields.io/badge/WebGL2-GLSL%20ES%203.0-990000.svg)](#rendering-pipeline)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4.svg)](#快速开始)
+[![Paper](https://img.shields.io/badge/paper-PDF-b31b1b.svg)](paper/paper.pdf)
 [![build](https://github.com/AaronShawn/blackhole-simulator/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AaronShawn/blackhole-simulator/actions/workflows/build-windows.yml)
 
 ![界面](docs/screenshot-main.webp)
 
 *施瓦西黑洞：视界阴影 + 光子环 + 引力透镜后的吸积盘顶面，多普勒集束让接近侧明显更亮更蓝。*
 
+> **配套论文** — [**`paper/paper.pdf`**](paper/paper.pdf)（77 页，A4，中文）
+> 《施瓦西黑洞实时成像模拟器：物理建模、数值方法与 GPU 实现》。
+> 从零测地线方程与静态观测者标架推导，到 RK4 误差阶、Page–Thorne 通量积分审计、
+> 近临界缠绕指数、亚像素阴影测量与 GPU 性能标定，**全文每一个数字、每一张图都由
+> [`paper/tools/`](paper/tools) 里的脚本在编译时从源码或实测数据重新生成**；
+> 25 张矢量配图在 [`paper/figures/`](paper/figures)，18 张数据表在 [`paper/tables/`](paper/tables)。
+
 ---
 
 ## 目录
 
 - [特性](#特性)
+- [配套论文](#配套论文)
 - [快速开始](#快速开始)
 - [操作](#操作)
 - [物理模型](#物理模型)
@@ -41,6 +50,46 @@ gravitational redshift and volumetric radiative transfer. [English README »](RE
 - **交互**：OrbitControls 旋转/缩放、6 组预设、可收起侧栏全屏预览、实时物理读数面板
 - **性能**：HDR 累积降噪、三级泛光、自适应分辨率；NVIDIA 走 D3D11/ANGLE 硬件加速
 - **便携**：PyInstaller + WebView2 打包成绿色文件夹，双击 `BlackHoleSimulator.exe` 即用
+
+## 配套论文
+
+[**`paper/paper.pdf`**](paper/paper.pdf) — *施瓦西黑洞实时成像模拟器：物理建模、数值方法与 GPU 实现*
+（77 页 / A4 / 25 图 / 18 表 / 参考文献 26 条）。它不是对代码的概述，而是一份可复核的技术报告：
+
+| 章 | 内容 | 关键结论（本文档实测） |
+| --- | --- | --- |
+| §1–2 | 施瓦西度规、零测地线轨道方程、静态观测者（FIDO）局部标架 | 逐像素 RK4 与解析阴影角半径在亚像素级一致 |
+| §3 | 积分器：误差阶、步长控制、逃逸判据、近临界缠绕 | 逃逸半径收敛指数、$b\to b_c$ 时 $\varphi\propto\ln\kappa$ 斜率 $-1.99995$ |
+| §4 | 吸积盘：Page–Thorne 通量、辐射转移、频移因子 $g$ | 闭式扭矩积分对 $4\times10^6$ 格求积闭合到 $2\times10^{-14}$ |
+| §5 | 验证：解析对照、累积收敛、亚像素探针、`verify.py` 回归 | 观测者距离扫描 $8M$–$150M$ 全档相对偏差 $\le0.13\%$ |
+| §6 | 结果与性能：$k n + c$ 成本模型、容差律、误差预算 | RMS 残差 2.37%，动态范围 $9.6\times10^4$–$6.0\times10^5$ px |
+| §7 | 讨论：与 Luminet (1979)、Novikov–Thorne、Cunningham–Bardeen 的关系 | 像阶次统计：三级及以上像在本文参数下为 **0** |
+
+**可复现性**：所有图表都由脚本生成，没有手抄数字。`paper/tools/` 内含独立的广义相对论参考实现
+`grref.py`（与 GLSL 着色器相互独立地求解同一批物理量）、绘图样式、表格生成器与实测数据采集脚本：
+
+```powershell
+cd paper
+python tools/measure_probe.py          # 亚像素阴影探针
+python tools/derive_perf.py            # 性能成本模型标定
+python tools/make_tables.py            # 生成 tables/*.tex（18 张表）
+python tools/make_figures.py; python tools/make_figures2.py   # 25 张矢量图
+python tools/extract_snippets.py       # 从 web/src 抽取附录代码清单
+```
+
+## 论文配图
+
+全部 25 张图在 [`paper/figures/`](paper/figures)（矢量 PDF）与
+[`paper/figures/png/`](paper/figures/png)（200 dpi PNG）。抽样：
+
+| | |
+| --- | --- |
+| ![应用界面与布局](paper/figures/png/f21_app_ui.png) | ![性能标定](paper/figures/png/f22_performance.png) |
+| **图 21** 应用界面与可收起侧栏布局（侧栏开/关下阴影均为同一亚像素位置） | **图 22** 性能标定：代价模型、容差律与计时离散性 |
+| ![多普勒集束图](paper/figures/png/f09_doppler_map.png) | ![近临界缠绕](paper/figures/png/f25_winding_divergence.png) |
+| **图 9** 频移因子 $g(r,\psi)$ 与集束因子 $g^4$ | **图 25** 近临界缠绕的对数发散与指数拟合 |
+| ![像阶次](paper/figures/png/f16_disk_image_orders.png) | ![积分器收敛](paper/figures/png/f05_integrator_convergence.png) |
+| **图 16** 吸积盘像阶次统计（一级/二级/≥三级） | **图 5** 积分器收敛阶与步长控制误差 |
 
 ## 快速开始
 
@@ -81,7 +130,7 @@ CI（`.github/workflows/build-windows.yml`）在 push / tag 时自动构建并�
 
 - 左键拖动：OrbitControls 环绕旋转（任意方位/仰角）
 - 滚轮 / 双指：缩放（观测者半径 r₀：4.2 M → 800 M）
-- `H` 或侧栏 `◀`：收起侧栏全屏预览（再按恢复；面板始终不遮挡画面中心）
+- `H` / `F` 或侧栏 `◀`：收起侧栏全屏预览（再按恢复，`Esc` 亦可还原；面板始终不遮挡画面中心）
 - `空格`：暂停 / 继续时间演化・`S`：导出当前画面 PNG
 - `📐 测量阴影半径`：渲染捕获掩膜并扫描，实测阴影半径 vs 解析值
 - 预设：经典视界 / 近观光子环 / 俯视盘面 / 纯引力透镜 / X 射线盘 / 高分辨率静帧
@@ -139,18 +188,22 @@ du/dφ|₀ = -u₀ · (cosψ / sinψ) · √(1 - 2M/r₀)
 
 ![阴影校验](docs/screenshot-shadow-check.webp)
 
-| r₀ [M] | 实测半径 [px] | 解析半径 [px] | 相对误差 |
-| ---: | ---: | ---: | ---: |
-| 8 | 551.50 | 552.31 | −0.15% |
-| 12 | 349.00 | 349.35 | −0.10% |
-| 20 | 206.50 | 206.46 | +0.02% |
-| 26 | 158.50 | 158.83 | −0.21% |
-| 40 | 103.50 | 103.62 | −0.12% |
-| 80 | 51.50 | 52.17 | −1.29% |
-| 150 | 27.00 | 27.95 | −3.40% |
+| r₀ [M] | 实测半径 [px] | 解析半径 [px] | 相对误差 | 绝对残差 [px] |
+| ---: | ---: | ---: | ---: | ---: |
+| 8 | 552.33 | 552.31 | +0.004% | +0.02 |
+| 12 | 349.38 | 349.35 | +0.006% | +0.02 |
+| 20 | 206.46 | 206.46 | −0.002% | −0.01 |
+| 26 | 158.85 | 158.83 | +0.012% | +0.02 |
+| 40 | 103.52 | 103.62 | −0.098% | −0.10 |
+| 80 | 52.17 | 52.17 | −0.013% | −0.01 |
+| 150 | 27.92 | 27.95 | −0.122% | −0.03 |
 
-> 1600×900、视场角 58°、Intel UHD / D3D11。角分辨率约 1 像素 ≈ 0.9%，即数值光线追踪与广义相对论
-> 解析解**在亚像素级一致**；r₀=150 M 时阴影半径仅 27 px，误差主要来自像素量化。
+> 1600×900、视场角 58°、Intel UHD / D3D11，相机半径从 8 M 扫到 150 M（阴影半径跨越 20 倍）。
+> 测量不再是整数像素扫描，而是 **24 帧分层亚像素偏移的覆盖率反解**：把捕获掩膜在 ±½ 像素内
+> 抖动采样、累积每像素覆盖率、再对中心行两个边缘像素解出亚像素位置，边缘定位不确定度
+> `1/(2√2·24) = 0.0147 px`。因此**相对偏差全程 ≤0.13%、绝对残差 ≤0.11 px**，
+> 残差落在覆盖率量化带内，而不是半个像素里——数值光线追踪与广义相对论解析解在此精度下不可区分。
+> 详细推导见论文 §5.4 与 [`tab:r0scan`](paper/tables/t18_r0_scan.tex)。
 
 ### 3. 吸积盘：Novikov–Thorne 型薄盘
 
@@ -255,6 +308,13 @@ b_axis = (L·ŷ)/E        ← 光子角动量在盘自转轴上的分量（不�
 │  ├─ shot.py / debug_page.py  # 单帧渲染与调试截图
 │  ├─ probe_dpi.py             # WebView2 窗口/视口尺寸校准
 │  └─ make_icon.py             # 生成应用图标
+├─ paper/                      # ★ 配套论文（LaTeX 源 + 全部生成脚本 + 编译好的 PDF）
+│  ├─ paper.pdf                #   77 页成品 PDF
+│  ├─ paper.tex / parts/*.tex  #   正文（引言…结论 + 附录），tectonic/latexmk 可直接编译
+│  ├─ figures/                 #   25 张矢量 PDF + 同名 200 dpi PNG（figures/png/）
+│  ├─ tables/*.tex             #   18 张数据表，由 make_tables.py 生成
+│  ├─ code/*.lst               #   从 web/src 抽取的附录代码清单
+│  └─ tools/                   #   grref.py 独立 GR 参考实现 + 绘图/表格/实测脚本
 ├─ assets/                     # 图标
 ├─ docs/                       # 截图
 ├─ build_portable.ps1          # 一键打包绿色版
@@ -273,13 +333,20 @@ b_axis = (L·ŷ)/E        ← 光子角动量在盘自转轴上的分量（不�
 ## 验证结果
 
 - 无头 Edge（Chromium, D3D11）与**打包后的 exe（WebView2）**均实机运行通过：无 JS 错误、无着色器编译错误
-- 阴影半径实测与解析解对比见第 2 节（亚像素一致）
+- 阴影半径实测与解析解对比见第 2 节（7 档观测者距离，相对偏差 ≤0.13%、绝对残差 ≤0.11 px）
+- 累积渲染的确定性：修正抖动相位索引后，重复渲染在同一 `n` 下逐位相同；相对 `n=2048` 参考图的
+  残差从 `n=1` 到 `n=1024` 下降 9.0 倍（论文 §5.3、图 24）
+- 侧栏开/关两种状态下阴影半径实测值完全一致（`tools/ui_check.py`：1264×900 侧栏开、1600×900 收起，
+  三次测量均为 158.8346 px），即**黑洞始终严格居中**
 - 打包体积约 **35 MB**（含 Python 运行时、WebView2 壳、前端资源与文档）
 - 显示缩放 175%、3000×2000 物理分辨率下界面按逻辑像素正确缩放，画面在侧栏开/关两种状态下均严格居中
 
 ## 许可与引用
 
 MIT License — 见 [LICENSE](LICENSE)。学术使用请参考 [CITATION.cff](CITATION.cff)。
+若引用本项目的物理模型、数值方法或验证结果，请同时引用配套论文
+[`paper/paper.pdf`](paper/paper.pdf)（BibTeX 条目见 [`paper/CITATION.md`](paper/CITATION.md)）。
 
 物理参考：Schwarzschild (1916)；Luminet (1979) *Image of a spherical black hole with thin accretion disk*；
-Novikov & Thorne (1973)；Cunningham & Bardeen (1973)；Kim et al. (2002) 色温轨迹拟合。
+Novikov & Thorne (1973)；Page & Thorne (1974)；Cunningham & Bardeen (1973)；
+Shakura & Sunyaev (1973)；Kim et al. (2002) 色温轨迹拟合。

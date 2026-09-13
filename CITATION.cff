@@ -5,9 +5,12 @@ type: software
 abstract: >-
   Real-time ray tracer for Schwarzschild black holes. Every pixel is a numerically
   integrated null geodesic (RK4, adaptive step); the accretion disk is rendered with a
-  Novikov-Thorne style temperature profile, relativistic Doppler beaming, gravitational
-  redshift, blackbody colour and volumetric radiative transfer. Includes a built-in
-  check of the apparent shadow radius against the analytic value b_c√(1-r_s/r0)/r0.
+  selectable Shakura-Sunyaev (1973) or Page-Thorne (1974) relativistic flux profile,
+  relativistic Doppler beaming, gravitational redshift, blackbody colour and volumetric
+  radiative transfer. Ships a sub-pixel shadow-radius probe that inverts the analytic
+  value b_c*sqrt(1-r_s/r0)/r0 to within 0.13 % relative (0.11 px absolute), a
+  reproducible companion paper with code-generated figures, and a double-clickable
+  portable Windows build with NVIDIA GPU support.
 authors:
   - alias: "AaronShawn"
 repository-code: "https://github.com/AaronShawn/blackhole-simulator"
@@ -21,5 +24,5 @@ keywords:
   - accretion disk
   - WebGL
   - three.js
-version: "1.0.0"
+version: "1.0.1"
 date-released: "2026-09-13"

@@ -34,6 +34,7 @@ const DEFAULTS = {
   spin: 1.0,
   kepler: 1.0,
   doppler: 1.0,
+  fluxModel: 1.0,       // 0 = Shakura-Sunyaev (Newtonian), 1 = Page-Thorne (GR)
   colorMode: 0.0,       // 0 = readable colour compression, 1 = true physical
   dispTMin: 2000.0,
   dispTMax: 14000.0,
@@ -142,7 +143,7 @@ function drawPass(material, target) {
 // --------------------------------------------------------------- materials ---
 const geoUniforms = {
   uResolution: { value: new THREE.Vector2(1, 1) },
-  uJitterSeed: { value: new THREE.Vector2(0, 0) },
+  uSampleIndex: { value: 0.0 },
   uJitter: { value: 1.0 },
   uCamPos: { value: new THREE.Vector3() },
   uCamBasis: { value: new THREE.Matrix3() },
@@ -163,6 +164,7 @@ const geoUniforms = {
   uSpin: { value: P.spin },
   uKepler: { value: P.kepler },
   uDoppler: { value: P.doppler },
+  uFluxModel: { value: P.fluxModel },
   uShowDisk: { value: P.showDisk },
   uShowStars: { value: P.showStars },
   uStarBright: { value: P.starBright },
@@ -299,17 +301,40 @@ if (typeof ResizeObserver !== 'undefined') {
 let simTime = 0.0;
 let accCount = 0;
 let accReset = true;
+// Index of the sub-pixel sample used by the running mean.  It *must* advance
+// together with ``accCount``: a frozen index would make every accumulated
+// frame identical, so the progressive average would neither anti-alias the
+// silhouette nor reduce the residual noise of the star field.
+let sampleIndex = 0;
+// Debug-only switch used by paper/tools/validate_accum.py to reproduce the
+// frozen-seed behaviour that shipped before v1.0.1.  It is not part of the
+// user-visible parameter set.
+let jitterFrozen = false;
+// Sample index override used by the sub-pixel shadow probe (measureShadow).
+// The probe has to walk the sample index itself, so it cannot rely on the
+// accumulation policy inside renderPipeline(); a negative value means "no
+// override".
+let probeSampleIndex = -1;
 let frameCount = 0;
+// Phase of the composite-pass film grain / dither.  It must be part of the
+// accumulation epoch: ``uFrame`` used to be driven by the *global* frame
+// counter, which ``resetAccumulation()`` does not touch, so two otherwise
+// identical renders differed by a fresh dither pattern.  That made converged
+// stills irreproducible and put a hard noise floor of ~4e-3 (luma, 8-bit) on
+// every accumulation measurement (paper, section on the sample budget).
+// Tying it to a counter that is reset with the accumulator makes the dither
+// decorrelated across the frames of one epoch and deterministic across epochs.
+let grainFrame = 0;
 let lastParamsKey = '';
 let lastCamKey = '';
 let lastCssW = 0, lastCssH = 0;
 
-function resetAccumulation() { accReset = true; accCount = 0; }
+function resetAccumulation() { accReset = true; accCount = 0; sampleIndex = 0; grainFrame = 0; }
 
 function paramsKey() {
   return [P.maxSteps, P.tol, P.stepScale, P.escapeR, P.diskInner, P.diskOuter, P.diskThick,
           P.diskTemp, P.diskBright, P.diskOpacity, P.turb, P.spin, P.kepler, P.doppler,
-          P.showDisk, P.showStars, P.starBright, P.colorMode, P.dispTMin, P.dispTMax,
+          P.fluxModel, P.showDisk, P.showStars, P.starBright, P.colorMode, P.dispTMin, P.dispTMax,
           P.renderScale, P.fov, P.paused].join(',');
 }
 
@@ -350,6 +375,7 @@ function updateUniforms() {
   u.uSpin.value = P.spin;
   u.uKepler.value = P.kepler;
   u.uDoppler.value = P.doppler;
+  u.uFluxModel.value = P.fluxModel;
   u.uShowDisk.value = P.showDisk;
   u.uShowStars.value = P.showStars;
   u.uStarBright.value = P.starBright;
@@ -367,9 +393,16 @@ function updateUniforms() {
 
 // ------------------------------------------------------------------ render ---
 function renderPipeline(target) {
+  const canAccum = P.accumulate && (P.paused || P.timeRate === 0.0);
+  // Pin the sample index to zero when the accumulation is off: a moving index
+  // without averaging is temporal dithering, i.e. visible flicker.
+  // ``jitterFrozen`` reproduces the pre-1.0.1 behaviour, where the index was
+  // never written, so that tools/validate_accum.py can measure the two
+  // regimes side by side.
+  geoUniforms.uSampleIndex.value = probeSampleIndex >= 0 ? probeSampleIndex
+    : ((canAccum && !jitterFrozen) ? sampleIndex : 0.0);
   drawPass(geoMat, rtScene);
 
-  const canAccum = P.accumulate && (P.paused || P.timeRate === 0.0);
   const prev = accFlip ? rtAccB : rtAccA;
   const next = accFlip ? rtAccA : rtAccB;
   blendMat.uniforms.tPrev.value = accReset ? rtScene.texture : prev.texture;
@@ -379,6 +412,7 @@ function renderPipeline(target) {
   accFlip = !accFlip;
   const base = next;
   accCount = Math.min(accCount + 1, 4096);
+  if (canAccum) sampleIndex = Math.min(sampleIndex + 1, 4096);
   accReset = false;
 
   // bloom pyramid
@@ -413,7 +447,8 @@ function renderPipeline(target) {
   compMat.uniforms.tB0.value = rtB0.texture;
   compMat.uniforms.tB1.value = rtB1.texture;
   compMat.uniforms.tB2.value = rtB2.texture;
-  compMat.uniforms.uFrame.value = frameCount % 1024;
+  compMat.uniforms.uFrame.value = grainFrame % 1024;
+  grainFrame++;
   drawPass(compMat, target || null);
   renderer.setRenderTarget(null);
 }
@@ -425,7 +460,13 @@ let fpsAccum = 0, fpsFrames = 0, fps = 0;
 function tick() {
   requestAnimationFrame(tick);
   const now = performance.now();
-  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  // Two different time steps on purpose.  ``frameMs`` is the true wall-clock
+  // interval and is what the FPS read-out must use: clamping it would make
+  // every frame slower than 10 Hz report exactly 10.0 fps.  ``dt`` is the
+  // simulation step, clamped so that a stall (tab in background, GPU hitch)
+  // cannot teleport the accretion-disk turbulence by a large amount.
+  const frameMs = now - lastTime;
+  const dt = Math.min(frameMs / 1000, 0.1);
   lastTime = now;
   frameCount++;
 
@@ -449,7 +490,7 @@ function tick() {
   renderPipeline(null);
 
   // HUD
-  fpsAccum += dt; fpsFrames++;
+  fpsAccum += frameMs / 1000; fpsFrames++;
   if (fpsAccum > 0.4) {
     fps = fpsFrames / fpsAccum;
     fpsAccum = 0; fpsFrames = 0;
@@ -544,34 +585,94 @@ function shadowRadiusPxFor(heightPx) {
   return (heightPx * 0.5) * Math.tan(shadowAngle()) / tanHalf;
 }
 
-// Renders the capture mask and measures the black disc radius on the centre row.
+// Renders the capture mask and measures the black disc radius on the centre
+// row.
+//
+// A single mask frame is binary, so the bright/dark boundary can only be
+// reported to the nearest pixel (+-0.5 px, i.e. +-0.35% of the radius at a
+// typical viewport) and the integer scan therefore carries a systematic
+// quantisation error that is larger than every other error term in the
+// verification suite (paper, section V3).  The probe instead renders
+// ``SHADOW_PROBE_SAMPLES`` mask frames, each with a different sub-pixel sample
+// offset taken from the same Cranley--Patterson sequence that drives the
+// progressive accumulator.  Every pixel then records the fraction of those
+// samples that landed inside the shadow, i.e. its coverage, and the two
+// 0.5-coverage crossings on the centre row are solved by linear interpolation
+// between neighbouring pixels.  That localises the edge to O(1/N) of a pixel
+// at any resolution, and turns an error that was dominated by the sampling
+// grid into one that is dominated by the physics.
+const SHADOW_PROBE_SAMPLES = 24;
+const SHADOW_DARK_LUMA = 40;    // 8-bit sRGB luma below which a pixel is "inside"
+
 function measureShadow() {
   const saveBloom = P.bloom, saveVig = P.vignette, saveExp = P.exposure;
-  const saveAccum = P.accumulate, saveMask = P.debugMask;
-  P.debugMask = 1; P.bloom = 0; P.vignette = 0; P.exposure = 1; P.accumulate = false;
+  const saveAccum = P.accumulate, saveMask = P.debugMask, saveGrain = P.grain;
+  P.debugMask = 1; P.bloom = 0; P.vignette = 0; P.exposure = 1; P.grain = 0;
+  P.accumulate = false;
   updateUniforms();
+
+  const n = SHADOW_PROBE_SAMPLES;
+  const y = CH >> 1, cx = CW >> 1;
   const rt = makeRT(CW, CH, THREE.UnsignedByteType);
-  renderPipeline(rt);
-  const buf = new Uint8Array(CW * CH * 4);
-  renderer.readRenderTargetPixels(rt, 0, 0, CW, CH, buf);
+  const row = new Uint8Array(CW * 4);
+  const hits = new Uint16Array(CW);
+  for (let k = 0; k < n; k++) {
+    probeSampleIndex = k;
+    renderPipeline(rt);
+    // One row only: the read-back is what serialises the pipeline, and the
+    // edge has to be found on the centre row anyway.
+    renderer.readRenderTargetPixels(rt, 0, y, CW, 1, row);
+    for (let x = 0; x < CW; x++) {
+      const o = x * 4;
+      const l = 0.2126 * row[o] + 0.7152 * row[o + 1] + 0.0722 * row[o + 2];
+      if (l < SHADOW_DARK_LUMA) hits[x]++;
+    }
+  }
+  probeSampleIndex = -1;
   rt.dispose();
   P.debugMask = saveMask; P.bloom = saveBloom; P.vignette = saveVig;
-  P.exposure = saveExp; P.accumulate = saveAccum;
+  P.exposure = saveExp; P.accumulate = saveAccum; P.grain = saveGrain;
   updateUniforms();
   resetAccumulation();
 
-  const y = CH >> 1, cx = CW >> 1;
-  const dark = (x) => {
-    const o = (y * CW + x) * 4;
-    return (0.2126 * buf[o] + 0.7152 * buf[o + 1] + 0.0722 * buf[o + 2]) < 40;
-  };
+  // Coverage profile of the centre row, 1 = always captured, 0 = never.
+  const cov = (x) => hits[x] / n;
   let l = cx, r = cx;
-  while (l > 0 && dark(l - 1)) l--;
-  while (r < CW - 1 && dark(r + 1)) r++;
-  const measured = (r - l) / 2;
+  while (l > 0 && hits[l - 1] > n / 2) l--;
+  while (r < CW - 1 && hits[r + 1] > n / 2) r++;
+
+  // Sub-pixel edge position.  For a straight silhouette the coverage of the
+  // pixel *centres* is a ramp of unit slope (one unit of coverage per pixel),
+  // so with the centre of pixel x at x + 1/2 a rising edge sits at
+  // x + 1 - cov(x) and a falling edge at x + cov(x).
+  //
+  // That formula only holds on a *partially* covered pixel.  When the
+  // outermost captured pixel is instead fully dark (cov = 1) the edge has
+  // crossed into its outer neighbour, and the whole ramp lives in that
+  // neighbour: the rising edge is then at l - cov(l - 1), and symmetrically
+  // the falling edge at (r + 1) + cov(r + 1).  The two branches are mutually
+  // exclusive - cov(x) < 1 implies the outer neighbour is completely empty -
+  // so this is exact for a straight silhouette to O(1/N) in either branch.
+  //
+  // Using only the first branch (and clamping it into [l, l + 1]) is what
+  // silently degraded the probe to an integer scan whenever the boundary
+  // happened to land in the outer neighbour; the clamp is what threw the
+  // sub-pixel part away, so it must not be used to pick the branch.
+  const covLeft = (x) => (x >= 0 ? hits[x] / n : 0);
+  const covRight = (x) => (x <= CW - 1 ? hits[x] / n : 0);
+  const edgeL = hits[l] === n ? l - covLeft(l - 1) : l + 1 - cov(l);
+  const edgeR = hits[r] === n ? (r + 1) + covRight(r + 1) : r + cov(r);
+  const measured = (edgeR - edgeL) / 2;
+
+  // Coverage quantisation +-1/(2N) propagates to +-1/(2N) pixels on a
+  // unit-slope edge; the two edges are independent, so the radius carries
+  // 1/(2*sqrt(2)*N).
+  const sigmaPx = 1 / (2 * Math.SQRT2 * n);
+
   const analytic = shadowRadiusPxFor(CH);
   const rel = analytic > 0 ? (measured - analytic) / analytic * 100 : 0;
-  return { measured, analytic, rel, lo: l, hi: r, height: CH };
+  return { measured, analytic, rel, sigmaPx, samples: n,
+           subpixel: true, lo: l, hi: r, edgeL, edgeR, height: CH };
 }
 
 const svg = document.getElementById('overlay');
@@ -589,8 +690,12 @@ function updateShadowCircle() {
 
 // --------------------------------------------------------------- interface ---
 const CONTROLS = [
-  { group: '吸积盘 (Novikov–Thorne 型)', open: true, items: [
+  { group: '吸积盘 (Shakura–Sunyaev / Novikov–Thorne)', open: true, items: [
     { k: 'showDisk', t: 'check', l: '显示吸积盘' },
+    { k: 'fluxModel', t: 'select', l: '辐射通量模型 F(r)', num: true, opts: [
+      ['1', 'Page–Thorne 广义相对论 (1974)'],
+      ['0', 'Shakura–Sunyaev 牛顿近似 (1973)'],
+    ]},
     { k: 'diskInner', t: 'range', l: '内缘 r<sub>in</sub> [M]', min: 6, max: 18, step: 0.1, fmt: v => v.toFixed(1) },
     { k: 'diskOuter', t: 'range', l: '外缘 r<sub>out</sub> [M]', min: 8, max: 80, step: 0.5, fmt: v => v.toFixed(1) },
     { k: 'diskThick', t: 'range', l: '厚度 H/r', min: 0.01, max: 0.25, step: 0.005, fmt: v => v.toFixed(3) },
@@ -633,13 +738,32 @@ const CONTROLS = [
   ]},
 ];
 
+// Applying a preset must not depend on what the user was looking at a moment
+// ago, so every preset is expanded from this fully explicit base instead of
+// being a bare partial override.  (With a bare partial override, choosing
+// "pure lensing" and then "X-ray disk" silently inherited showDisk = 0 and
+// rendered a disk-less image -- see the paper, chapter on the UI layer.)
+const PRESET_BASE = {
+  dist: 26.0, elevation: 13.0, fov: 58.0, autoRotate: false,
+  showDisk: 1, diskInner: 6.0, diskOuter: 26.0, diskThick: 0.075,
+  diskTemp: 9000.0, diskBright: 1.0, diskOpacity: 2.6, turb: 0.55,
+  spin: 1.0, kepler: 1.0, doppler: 1.0, fluxModel: 1.0,
+  colorMode: 0.0, dispTMin: 2000.0, dispTMax: 14000.0,
+  showStars: 1.0, starBright: 1.0,
+  maxSteps: 300, tol: 0.03, stepScale: 1.0, escapeR: 140.0,
+  timeRate: 9.0, paused: false, debugMask: 0, autoQuality: true,
+  renderScale: 1.0, exposure: 1.0, bloom: 0.38, bloomThreshold: 1.6,
+  vignette: 0.35, grain: 0.010, accumulate: true, shadowCircle: false,
+};
+
 const PRESETS = {
-  '经典视界 (推荐)': { dist: 26, elevation: 13, diskInner: 6, diskOuter: 26, diskTemp: 9000, colorMode: 0, exposure: 1.0, bloom: 0.38, showDisk: 1, showStars: 1, turb: 0.55, diskOpacity: 2.6, fov: 58, renderScale: 1.0, maxSteps: 300, tol: 0.03, paused: false, timeRate: 9 },
-  '近观光子环': { dist: 12, elevation: 7, diskInner: 6, diskOuter: 22, diskTemp: 11000, colorMode: 0, exposure: 0.9, bloom: 0.42, fov: 42, maxSteps: 520, tol: 0.02, renderScale: 1.0, showStars: 1, turb: 0.5, paused: true },
-  '俯视盘面': { dist: 40, elevation: 58, diskInner: 6, diskOuter: 30, diskTemp: 8000, colorMode: 0, exposure: 1.0, bloom: 0.28, fov: 50, maxSteps: 320, tol: 0.03, paused: true },
-  '纯引力透镜 (无盘)': { dist: 20, elevation: 6, showDisk: 0, showStars: 1, starBright: 1.3, exposure: 1.0, bloom: 0.25, fov: 55, maxSteps: 420, tol: 0.025, paused: true },
-  'X 射线盘 (T=10⁷ K)': { dist: 26, elevation: 11, diskTemp: 1.0e7, colorMode: 1, dispTMin: 2000, dispTMax: 14000, exposure: 0.75, bloom: 0.35, fov: 58, maxSteps: 340, paused: true },
-  '高分辨率静帧': { dist: 24, elevation: 10, renderScale: 1.5, maxSteps: 800, tol: 0.015, accumulate: true, paused: true, fov: 50, exposure: 1.0, bloom: 0.38 },
+  '经典视界 (推荐)': { ...PRESET_BASE, dist: 26, elevation: 13, timeRate: 9 },
+  '近观光子环': { ...PRESET_BASE, dist: 12, elevation: 7, diskOuter: 22, diskTemp: 11000, exposure: 0.9, bloom: 0.42, fov: 42, maxSteps: 520, tol: 0.02, turb: 0.5, paused: true },
+  '俯视盘面': { ...PRESET_BASE, dist: 40, elevation: 58, diskOuter: 30, diskTemp: 8000, bloom: 0.28, fov: 50, maxSteps: 320, paused: true },
+  '纯引力透镜 (无盘)': { ...PRESET_BASE, dist: 20, elevation: 6, showDisk: 0, starBright: 1.3, bloom: 0.25, fov: 55, maxSteps: 420, tol: 0.025, paused: true },
+  'X 射线盘 (T=10⁷ K)': { ...PRESET_BASE, dist: 26, elevation: 11, diskTemp: 1.0e7, colorMode: 1, dispTMin: 2000, dispTMax: 14000, exposure: 0.75, bloom: 0.35, maxSteps: 340, paused: true },
+  '牛顿盘对照 (SS 1973)': { ...PRESET_BASE, dist: 26, elevation: 13, fluxModel: 0, paused: true },
+  '高分辨率静帧': { ...PRESET_BASE, dist: 24, elevation: 10, renderScale: 1.5, maxSteps: 800, tol: 0.015, accumulate: true, paused: true, fov: 50 },
 };
 
 const uiEls = {};   // key -> { input, out, item }
@@ -782,7 +906,8 @@ function wireButtons() {
       '实测阴影半径 <b>' + m.measured.toFixed(2) + '</b> px &nbsp;|&nbsp; ' +
       '解析值 <b>' + m.analytic.toFixed(2) + '</b> px &nbsp;|&nbsp; ' +
       '相对误差 <b>' + (m.rel >= 0 ? '+' : '') + m.rel.toFixed(2) + '%</b><br>' +
-      '<span>（沿画面中线扫描捕获掩膜，b<sub>c</sub>=3√3 M）</span>';
+      '<span>（沿画面中线反解捕获掩膜，' + m.samples + ' 次分层子像素采样，' +
+      '边缘定位 ±' + m.sigmaPx.toFixed(3) + ' px；b<sub>c</sub>=3√3 M）</span>';
   });
   document.getElementById('btn-reset').addEventListener('click', () => { applyPreset('经典视界 (推荐)'); });
   document.getElementById('btn-default').addEventListener('click', () => {
@@ -794,17 +919,35 @@ function wireButtons() {
   });
   const p = document.getElementById('btn-pause');
   p.addEventListener('click', () => { P.paused = !P.paused; resetAccumulation(); syncUI(); });
-  const togglePanel = () => {
-    document.body.classList.toggle('nopanel');
+  // The render surface is a fixed, full-window layer and the sidebar floats on
+  // top of it, so collapsing the panel only changes the *viewport* the camera
+  // reports; the camera itself is positioned by OrbitControls from (r0, i, phi)
+  // and therefore keeps looking at the origin.  That is what makes the shadow
+  // stay pinned to the centre of the frame with the panel open or closed.
+  const PANEL_KEY = 'bh.panelCollapsed';
+  const panelCollapsed = () =>
+    document.body.classList.contains('nopanel');
+  const setPanel = (collapsed, remember) => {
+    document.body.classList.toggle('nopanel', !!collapsed);
+    if (remember !== false) {
+      try { localStorage.setItem(PANEL_KEY, collapsed ? '1' : '0'); } catch (e) { /* private mode */ }
+    }
     updateShadowCircle();
     requestAnimationFrame(allocateTargets);
   };
+  const togglePanel = () => setPanel(!panelCollapsed());
+  try {
+    if (localStorage.getItem(PANEL_KEY) === '1') setPanel(true, false);
+  } catch (e) { /* private mode */ }
   document.getElementById('btn-hide').addEventListener('click', togglePanel);
   document.getElementById('btn-collapse').addEventListener('click', togglePanel);
   document.getElementById('btn-expand').addEventListener('click', togglePanel);
 
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'h' || e.key === 'H') togglePanel();
+    if (e.key === 'h' || e.key === 'H' || e.key === 'f' || e.key === 'F') togglePanel();
+    // Esc is the conventional "leave full screen" key: it only ever restores
+    // the sidebar, so it cannot be confused with the F/H toggle.
+    if (e.key === 'Escape' && panelCollapsed()) setPanel(false);
     if (e.key === ' ') { P.paused = !P.paused; resetAccumulation(); syncUI(); e.preventDefault(); }
     if (e.key === 's' || e.key === 'S') snapshot();
     if (e.key === 'r' || e.key === 'R') applyPreset('经典视界 (推荐)');
@@ -854,12 +997,81 @@ function ldrColumn() {
 
 window.__bh = {
   P, DEFAULTS, PRESETS, applyPreset, camera, controls, renderer,
-  set: (k, v) => { P[k] = v; resetAccumulation(); syncUI(); },
+  // ``renderScale`` changes the size of every render target, so it has to go
+  // through allocateTargets() rather than only touching the parameter object.
+  set: (k, v) => {
+    P[k] = v;
+    resetAccumulation();
+    if (k === 'renderScale') allocateTargets();
+    syncUI();
+  },
   pixel: ldrPixel,
   column: ldrColumn,
   measure: measureShadow,
+  // Synchronised single-frame cost.  A frame is pushed into an off-screen
+  // target and a one-pixel read-back forces the driver to finish every GPU
+  // command, so the samples measure real GPU work and not the
+  // requestAnimationFrame rate limit of the host.  All three order statistics
+  // are reported; the paper uses ``min`` as its estimator because contention,
+  // thermal throttling and scheduler jitter can only add time, never remove
+  // it, whereas ``median`` on a soft-rasterised machine is frequently
+  // quantised to a ~2x-coarser level (see paper/tools/diag_taucap.json).
+  cost: (n) => {
+    const reps = Math.max(1, n | 0);
+    const rt = makeRT(CW, CH, THREE.UnsignedByteType);
+    const px = new Uint8Array(4);
+    const ts = [];
+    for (let i = 0; i < reps; i++) {
+      const t0 = performance.now();
+      renderPipeline(rt);
+      renderer.readRenderTargetPixels(rt, 0, 0, 1, 1, px);
+      ts.push(performance.now() - t0);
+    }
+    rt.dispose();
+    ts.sort((a, b) => a - b);
+    return { median: ts[ts.length >> 1], min: ts[0], max: ts[ts.length - 1], n: reps };
+  },
+  freezeJitter: (on) => { jitterFrozen = !!on; resetAccumulation(); return jitterFrozen; },
+  // Synchronous progressive-accumulation probe used by
+  // paper/tools/validate_accum.py.  It renders ``n`` frames back to back with
+  // the current sample-index policy and reads the LDR result back, so the
+  // convergence of the running mean can be measured without screenshots
+  // (a screenshot keeps accumulating while the capture is taken and would
+  // therefore not report a well-defined sample count).
+  accumulateTo: (n) => {
+    const rep = Math.max(1, n | 0);
+    if (!probeRT || probeRT.width !== CW || probeRT.height !== CH) {
+      if (probeRT) probeRT.dispose();
+      probeRT = makeRT(CW, CH, THREE.UnsignedByteType);
+    }
+    const keepPaused = P.paused, keepRate = P.timeRate;
+    P.paused = true; P.timeRate = 0.0;
+    resetAccumulation();
+    for (let i = 0; i < rep; i++) renderPipeline(probeRT);
+    P.paused = keepPaused; P.timeRate = keepRate;
+    const buf = new Uint8Array(CW * CH * 4);
+    renderer.readRenderTargetPixels(probeRT, 0, 0, CW, CH, buf);
+    const luma = (o) => (0.2126 * buf[o] + 0.7152 * buf[o + 1] + 0.0722 * buf[o + 2]) / 255;
+    const sx = Math.max(1, Math.round(CW / 128));
+    const sy = Math.max(1, Math.round(CH / 96));
+    const grid = [];
+    for (let y = 0; y < CH; y += sy) {
+      for (let x = 0; x < CW; x += sx) grid.push(luma((y * CW + x) * 4));
+    }
+    const rowY = CH >> 1;
+    const row = [];
+    for (let x = 0; x < CW; x++) row.push(luma((rowY * CW + x) * 4));
+    return { n: rep, w: CW, h: CH, sx, sy, rowY, grid, row };
+  },
+  // Deterministic playback hook: the paper's figures freeze the coordinate
+  // time so that every re-render of a figure reproduces the same turbulence
+  // pattern.  ``time`` returns the current coordinate time in units of M.
+  time: () => simTime,
+  setTime: (t) => { simTime = t; resetAccumulation(); },
   info: () => ({ gpu: GPU_NAME, webgl2: isWebGL2, hdr: halfFloatRT, fps, accCount,
-                 shadowPx: shadowRadiusPx(), dist: camera.position.length() }),
+                 shadowPx: shadowRadiusPx(), dist: camera.position.length(),
+                 simTime, traced: SH_W + 'x' + SH_H, scale: P.renderScale,
+                 steps: P.maxSteps, tol: P.tol }),
 };
 
 tick();

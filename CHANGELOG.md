@@ -4,6 +4,56 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-09-13
+
+### Added
+
+- **Selectable disk flux law**: `fluxModel` switches at run time between the
+  Shakura–Sunyaev (1973) Newtonian profile and the relativistic Page–Thorne (1974)
+  thin-disk profile, both normalised to unit peak so that only the *shape* differs.
+  The Page–Thorne profile is evaluated from the closed-form circular-geodesic
+  integral `B(r)`, audited against a 4×10⁶-cell quadrature to 2×10⁻¹⁴ relative.
+- **Sub-pixel shadow probe**: the one-click measurement now renders
+  `SHADOW_PROBE_SAMPLES = 24` capture-mask frames with stratified sub-pixel offsets
+  taken from the accumulator's own Cranley–Patterson sequence, accumulates a
+  per-pixel coverage fraction and inverts the two edge pixels of the centre row.
+  Edge-localisation uncertainty drops from ±0.5 px (integer scan) to
+  1/(2√2·24) = 0.0147 px.
+- **Academic paper** (`paper/`): LaTeX source, 25 vector figures, 18 tables and the
+  scripts that generate every number, plus a portable `paper.pdf` (77 pages) and a
+  `paper/CITATION.md` with ready-to-paste BibTeX entries.
+
+### Fixed
+
+- **Sub-pixel shadow radius measurement** — see above. At 1600×900 / r₀ = 26 M the
+  reported radius moves from 158.50 px (−0.21 %) to 158.79 px (−0.027 %); the
+  residual is now inside the coverage-quantisation band instead of inside half a
+  pixel. 1440×820 reports 144.73 px against an analytic 144.72 px (+0.009 %), and
+  1000×600 reports 105.85 px against 105.89 px (−0.034 %).
+- **Progressive-accumulation sample index was never written**, so every jittered
+  frame reused the same sub-pixel offset: the accumulator averaged identical frames
+  and the composite pass added a fresh 8-bit dither pattern on top, which put a hard
+  ≈4×10⁻³ luma floor on repeated renders. Indexing the jitter phases by the frame
+  counter makes repeated renders bit-identical and restores the expected
+  accumulation behaviour (residual against an n = 2048 reference drops 9.0× from
+  n = 1 to 1024).
+- **Film-grain phase** is now tied to the accumulation epoch instead of wall-clock
+  time, so a paused image is exactly reproducible.
+- The shadow probe zeroes `grain` as well as `bloom`/`vignette` while measuring, so
+  the threshold test can no longer be perturbed by dither.
+
+### Changed
+
+- **Sidebar / preview layout**: the render surface is now a fixed full-window layer
+  and the sidebar floats above it, so the black hole stays exactly centred with the
+  panel open *or* closed. New buttons collapse the sidebar for full-screen preview
+  (also bound to `H` / `F`; `Esc` restores the sidebar only), and the collapsed state
+  is remembered across reloads.
+- Replaced the default white scrollbar with a slim themed one.
+- **Figure 9 (Doppler map)** is now embedded as a 400 dpi raster inside the PDF
+  instead of ~10^5 vector quads, cutting that figure from 6.17 MB to 105 KB with no
+  visible loss at print resolution.
+
 ## [1.0.0] - 2026-09-13
 
 ### Added

@@ -6,6 +6,7 @@ Usage:  python tools/verify.py [--shots DIR] [--width 1600] [--height 900]
 """
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -99,6 +100,34 @@ def main() -> int:
         print("\n[r0/M]  measured_px   analytic_px   rel.err")
         for d, meas, ana, rel in rows:
             print("  %6.1f  %10.2f  %11.2f  %+7.2f%%" % (d, meas, ana, rel))
+
+        # dump the observer-distance scan so that the paper table
+        # (paper/tables/t18_r0_scan.tex) can be regenerated from a single run
+        scan_path = os.path.join(resource_root(), "paper", "tools", "r0_scan.json")
+        try:
+            with open(scan_path, "w", encoding="utf-8") as fh:
+                json.dump(
+                    {
+                        "note": "Observer-distance scan of the numerically traced "
+                                "shadow radius in the shipped app (window.__bh.measure()).",
+                        "source": "tools/verify.py",
+                        "gpu": info0["gpu"],
+                        "webgl2": bool(info0["webgl2"]),
+                        "width": args.width,
+                        "height": args.height,
+                        "samples": None,
+                        "rows": [
+                            {"r0": d, "measured": meas, "analytic": ana, "rel": rel}
+                            for d, meas, ana, rel in rows
+                        ],
+                    },
+                    fh,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            print("[scan]", scan_path)
+        except OSError as exc:  # pragma: no cover - only on a read-only tree
+            print("[scan] could not write", scan_path, exc)
         browser.close()
 
     httpd.shutdown()

@@ -35,7 +35,7 @@ precision highp int;
 varying vec2 vUv;
 
 uniform vec2  uResolution;
-uniform vec2  uJitterSeed;
+uniform float uSampleIndex;   // progressive-accumulation sample counter
 uniform float uJitter;
 
 uniform vec3  uCamPos;      // world position of the static observer (units of M)
@@ -59,6 +59,7 @@ uniform float uTurb;
 uniform float uSpin;        // +1 / -1 : sense of disk rotation
 uniform float uKepler;      // 1 = orbiting disk, 0 = static emitter
 uniform float uDoppler;     // 1 = relativistic shifts on
+uniform float uFluxModel;   // 0 = Shakura-Sunyaev (Newtonian), 1 = Page-Thorne
 uniform float uShowDisk;
 
 uniform float uShowStars;
@@ -231,13 +232,51 @@ float diskWindow(float r) {
   return w;
 }
 
-// Shakura-Sunyaev / Novikov-Thorne-like flux profile, normalised to its peak:
-//   F(r) ~ r^-3 (1 - sqrt(r_in/r)),  peaking at r = (49/36) r_in
-// temperature follows  T ~ F^(1/4),  emission j ~ F (Stefan-Boltzmann).
-float diskFlux(float r) {
-  float rp = 1.3611111 * uDiskInner;
+// ---------------------------------------------------------- disk flux laws ---
+// Both profiles are normalised to unit peak so that the disk temperature and
+// brightness scales are model independent; the *shape* is what differs.
+//
+// (a) Shakura-Sunyaev 1973 (Newtonian, Mdot = const, zero torque at r_in):
+//       F(r) = 3M/(8 pi) (1 - sqrt(r_in/r)) / r^3 ,
+//     which peaks exactly at r = (49/36) r_in.
+float diskFluxSS(float r) {
+  float rp = 1.3611111 * uDiskInner;          // (49/36) r_in
   float F = 7.0 * (1.0 - sqrt(uDiskInner / r)) * pow(rp / r, 3.0);
   return max(F, 0.0);
+}
+
+// (b) Page-Thorne 1974 / Novikov-Thorne relativistic thin disk (Schwarzschild):
+//       F(r) = Mdot/(4 pi r) (-dOmega/dr) (E - Omega L)^-2 B(r)
+//     with the circular-geodesic integrals (M = 1, sqrt(1-3/r) = E - Omega L)
+//       E(r) = (1-2/r) / sqrt(1-3/r),   L(r) = sqrt(r) / sqrt(1-3/r),
+//       Omega(r) = r^(-3/2),            dL/dr = (r-3)/ (2 sqrt(r) (1-3/r)^(3/2)),
+//       B(r) = int_{r_in}^{r} (E - Omega L) dL/dr' dr'
+//            = (sqrt(r)-sqrt(r_in)) - (sqrt(3)/2) * ln( [(sqrt(r)-sqrt3)(sqrt(r_in)+sqrt3)]
+//                                                     / [(sqrt(r)+sqrt3)(sqrt(r_in)-sqrt3)] ).
+//     The closed form above was audited against a 4x10^6-cell quadrature to
+//     2e-14 relative accuracy (paper/tools/audit_nt.py).
+float ptRawFlux(float r, float rin) {
+  const float SQ3 = 1.7320508075688772;
+  float rc = max(r, rin);                     // profile is defined for r >= r_in
+  float s = sqrt(rc);
+  float si = sqrt(rin);
+  float num = (s - SQ3) * (si + SQ3);
+  float den = (s + SQ3) * (si - SQ3);
+  float B = (s - si) - 0.5 * SQ3 * log(max(num / max(den, 1e-20), 1e-20));
+  float u_red = max(1.0 - 3.0 / rc, 1e-4);    // (E - Omega L)^2 = 1 - 3M/r
+  // -dOmega/dr = 1.5 r^(-5/2)
+  return 1.5 * pow(rc, -2.5) * B / (4.0 * PI * rc * u_red);
+}
+
+float diskFluxPT(float r) {
+  float rin = max(uDiskInner, 3.001);
+  float pk = ptRawFlux(1.5918219 * rin, rin); // peak at 1.5918 r_in (r_in = 6M)
+  return max(ptRawFlux(r, rin) / max(pk, 1e-30), 0.0);
+}
+
+// temperature follows  T ~ F^(1/4),  emission j ~ F (Stefan-Boltzmann).
+float diskFlux(float r) {
+  return (uFluxModel > 0.5) ? diskFluxPT(r) : diskFluxSS(r);
 }
 
 vec3 diskSource(float r, vec3 pm, vec3 tdir, float Fh) {
@@ -282,9 +321,16 @@ vec3 diskSource(float r, vec3 pm, vec3 tdir, float Fh) {
 // --------------------------------------------------------------- integrator ---
 void main() {
   vec2 ndc = vUv * 2.0 - 1.0;
-  float jx = hash21(gl_FragCoord.xy + uJitterSeed);
-  float jy = hash21(gl_FragCoord.yx * 1.371 + uJitterSeed + 17.3);
-  ndc += (vec2(jx, jy) - 0.5) * 2.0 * uJitter / uResolution;
+  // Sub-pixel sample position: a Cranley--Patterson rotation of the R2
+  // low-discrepancy sequence.  The rotation is a per-pixel constant, so a
+  // capture with a fixed sample index is bit-reproducible, while successive
+  // indices are stratified inside the pixel instead of clustering like
+  // independent uniform noise would.
+  vec2 rot = vec2(hash21(gl_FragCoord.xy),
+                  hash21(gl_FragCoord.yx * 1.371 + 17.3));
+  vec2 jit = fract(rot + uSampleIndex * vec2(0.7548776662466927,
+                                              0.5698402909980532));
+  ndc += (jit - 0.5) * 2.0 * uJitter / uResolution;
 
   // local (static observer) direction of the pixel
   vec3 nLocal = normalize(uCamBasis * vec3(ndc.x * uTanHalfFov * uAspect,
