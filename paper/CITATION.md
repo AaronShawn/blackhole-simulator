@@ -8,8 +8,8 @@
 ```bibtex
 @techreport{blackholeSimulator2026paper,
   title       = {施瓦西黑洞实时成像模拟器：物理建模、数值方法与 GPU 实现},
-  author      = {{BlackHoleSimulator Project}},
-  institution = {BlackHoleSimulator Project},
+  author      = {徐上},
+  institution = {无锡工艺职业技术学院},
   type        = {技术报告},
   year        = {2026},
   month       = {9},
@@ -26,8 +26,8 @@
 @techreport{blackholeSimulator2026paperEn,
   title       = {A Real-Time {Schwarzschild} Black-Hole Imaging Simulator:
                  Physical Modelling, Numerical Methods and {GPU} Implementation},
-  author      = {{BlackHoleSimulator Project}},
-  institution = {BlackHoleSimulator Project},
+  author      = {徐上},
+  institution = {无锡工艺职业技术学院},
   year        = {2026},
   month       = {9},
   version     = {1.0.1},

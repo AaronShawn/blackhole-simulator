@@ -13,6 +13,10 @@ abstract: >-
   portable Windows build with NVIDIA GPU support.
 authors:
   - alias: "AaronShawn"
+  - family-names: "徐"
+    given-names: "上"
+    affiliation: "无锡工艺职业技术学院"
+    email: "3473945423@qq.com"
 repository-code: "https://github.com/AaronShawn/blackhole-simulator"
 license: MIT
 keywords:
