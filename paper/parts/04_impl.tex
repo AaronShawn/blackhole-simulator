@@ -1,0 +1,623 @@
+% ===========================================================================
+%  04_impl.tex -- 渲染管线与交互实现
+% ===========================================================================
+\section{渲染管线与交互实现}\label{sec:impl}
+
+第~\ref{sec:theory} 节给出了公式，第~\ref{sec:numerics} 节给出了离散化，
+但一条公式与一个可以旋转、缩放、实时响应的画面之间还有很长的距离。
+本节说明这段距离是怎么被跨过的：一个像素从屏幕坐标出发，经过
+四段渲染通道、一次渐进平均、一条三级辉光金字塔和一次影调映射，
+最终成为一个 8 位整数。我们刻意把实现细节写在这里而不是留给源码，
+原因是\textbf{几乎所有实验误差都诞生在这条路径上，而不是在物理公式里}：
+V1--V5 的几何误差在 $10^{-14}$--$10^{-5}$ 量级，而 V6 发现的
+管线级误差在 $10^{-3}$ 量级，足足高出八个数量级。
+
+\subsection{四段 GPU 管线}\label{sec:pipeline}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.99\linewidth]{f18_pipeline}
+\caption{渲染管线。(a) 每帧的四段通道与它们之间的渲染目标；
+测地线通道在受追踪分辨率 $S_W\times S_H$ 上工作（该分辨率与冲击参数
+\emph{无关}，由视口缩放与像素预算共同决定），辉光金字塔在
+$1/2$、$1/4$、$1/8$ 层上各做一次可分离高斯。
+(b) 通道之间的数据流与精度：全精度的两个乒乓目标
+（$A$、$B$）保存的是\emph{累积之后}的 HDR 辐射亮度，
+因此渐进平均发生在色调映射之前、线性域内。
+(c) 参数变化触发累积重置的传播路径：相机键与参数键任一改变，
+整条链从 $n=1$ 重新开始。}
+\label{fig:18}
+\end{figure}
+
+渲染器使用 WebGL2 上下文与 \texttt{three.js} 的最小封装，
+但\textbf{关闭}了框架里所有会介入色彩管理的开关：
+
+\begin{lstlisting}[language=JavaScript, caption={渲染器与渲染目标的初始化（节选）}, label={lst:renderer}]
+const renderer = new THREE.WebGLRenderer({
+  antialias: false, alpha: false, depth: false, stencil: false,
+  powerPreference: 'high-performance', preserveDrawingBuffer: false });
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;  // 自己做 sRGB
+renderer.toneMapping      = THREE.NoToneMapping;         // 自己做 ACES
+renderer.setPixelRatio(1);                               // 由 allocateTargets 决定
+renderer.setClearColor(0x000000, 1);
+
+const halfFloatRT = !!(gl.getExtension('EXT_color_buffer_float') ||
+                       gl.getExtension('EXT_color_buffer_half_float'));
+const HDR_TYPE    = halfFloatRT ? THREE.HalfFloatType : THREE.UnsignedByteType;
+\end{lstlisting}
+
+\noindent
+这三行「关闭」是必要的，而不是风格选择。若保留框架的 sRGB 输出转换，
+我们在复合通道里手写的精确分段函数会被再做一次近似转换；
+若保留其 ACES 近似，辉光的三个权重将失去与
+式~\eqref{eq:I4} 的一致性——物理上 $I\propto g^{4}$ 的动态范围
+必须由\emph{我们自己的}曲线收拢，才能在论文里被验证。
+当设备不支持浮点渲染目标时降级为 8 位（\texttt{HDR\_TYPE}
+为 \texttt{UnsignedByteType}），此时 HDR 累积会饱和，
+程序在 HUD 中以 \texttt{LDR} 标记这一降级路径。
+
+\paragraph{四段通道。}
+每帧的渲染顺序固定为：
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt,topsep=3pt]
+\item \textbf{测地线通道（geodesic）。}对每个受追踪像素求解
+      §\ref{sec:numerics} 的 RK4 系统，输出线性 HDR 辐射亮度；
+      §\ref{sec:stars} 的星场与 §\ref{sec:disk} 的盘辐射都在这里进入。
+\item \textbf{累积通道（accumulation）。}把当前帧与上一帧的
+      乒乓目标按 $1/(n+1)$ 混合（式~\eqref{eq:avgw}），
+      得到 $n$ 帧的等权均值；这一步在\emph{线性域}完成。
+\item \textbf{辉光通道（bloom）。}先做软拐点亮度提取，
+      再在 $1/2$、$1/4$、$1/8$ 三层上各做一次「水平 5 抽头 +
+      垂直 5 抽头」的可分离高斯，得到三个频带。
+\item \textbf{复合通道（composite）。}把三频带按固定权重相加，
+      再过 ACES 曲线、精确 sRGB 编码、暗角与胶片颗粒，
+      写进默认帧缓冲。
+\end{enumerate}
+
+\paragraph{渲染目标预算。}
+全分辨率目标有三个（\texttt{rtScene}、\texttt{rtAccA}、\texttt{rtAccB}），
+因为渐进平均需要一个读目标和一个写目标，且当前帧必须与均值同时存活。
+辉光链共七个目标，尺寸按 $1/2$、$1/4$、$1/8$ 递减，
+总显存需求约为测地线目标的 $2.3$ 倍。所有目标都设
+\texttt{depthBuffer:false}、\texttt{stencilBuffer:false}、
+\texttt{generateMipmaps:false}，并把纹理
+\texttt{colorSpace} 显式置为 \texttt{NoColorSpace}——
+后两条是 \S\ref{sec:pipeline} 开头「自己做色彩管理」的具体落实：
+只要有一个目标在采样时被悄然做一次 sRGB 解码，
+累积均值就不再是辐射亮度的均值。
+
+\paragraph{为什么不做时间超采样。}
+一个常见做法是在运动时降低采样、静止时累积，并用「上一个运动帧」
+做时域重投影。本模拟器只做\textbf{同一相机、同一参数}的静止累积
+（\texttt{canAccum} 仅在 \texttt{paused} 或 \texttt{timeRate}$=0$ 时为真），
+因为重投影会引入与像素颜色无关的插值误差，
+而本工作的目标之一是让「屏幕上那个数」可被逐点验证。
+运动帧因此不做任何时域混合，只做空间抖动——
+这一取舍的代价在 §\ref{sec:perf} 中被量化。
+
+\subsection{分辨率预算、样本序号与渐进累积}\label{sec:jitter}
+
+这一小节是本实现中唯一一处「算法设计正确、实现时序错误」的完整记录。
+把它写进论文而不是在提交信息里一笔带过，是因为它同时
+说明了两件事：渐进渲染的\emph{正确性条件}是什么，
+以及为什么必须有一个能在真实 GPU 上下文里回读像素的验证层（V6）。
+
+\paragraph{第一步：把像素的采样点抖动起来。}
+一个像素是有限的面积，而测地线通道在每个像素中心只取一条光线。
+为了在静止画面的渐进累积中把像素内部也积分掉，
+每个样本点使用一个亚像素偏移：
+\begin{equation}
+\mathbf{j}_n=\operatorname{fract}\!\left(\mathbf{r}+\,n\,
+\bigl(0.7548776662466927,\;0.5698402909980532\bigr)\right),
+\qquad
+\mathbf{x}_{\rm ndc}\leftarrow \mathbf{x}_{\rm ndc}
++\left(\mathbf{j}_n-\tfrac12\right)\frac{2\,j}{S_W},
+\label{eq:jitter}
+\end{equation}
+其中 $\mathbf{r}$ 是逐像素固定的旋转量，两个常数是二元
+$R_2$ 低差异序列的生成向量。式~\eqref{eq:jitter} 是
+\textbf{Cranley--Patterson 旋转}：逐像素的常数旋转把 $R_2$ 序列
+变成一个像素内分层、像素间互不相同的采样集；
+而 $n$ 相同的两次渲染给出完全相同的偏移，
+这保证了「同一配置的静帧可重复」。
+
+\begin{lstlisting}[language=GLSL, caption={抖动相位：逐像素常数旋转 + 样本序号推进（shaders.js 节选）}, label={lst:jitter}]
+// 逐像素固定的旋转量（decorrelated across pixels）
+vec2 rot = vec2(hash21(gl_FragCoord.xy),
+                hash21(gl_FragCoord.yx * 1.371 + 17.3));
+// R2 低差异序列，按样本序号推进 -> 像素内分层而非随机聚簇
+vec2 jit = fract(rot + uSampleIndex * vec2(0.7548776662466927,
+                                            0.5698402909980532));
+ndc += (jit - 0.5) * 2.0 * uJitter / uResolution;
+\end{lstlisting}
+
+\paragraph{第二步：在正确的时刻推进样本序号。}
+主机侧维护两个必须同步的计数器：运行均值的帧数 \texttt{accCount}
+与上式里的样本序号 \texttt{sampleIndex}。非暂停时（渲染器在跑动画）
+\texttt{sampleIndex} 被强制归零：
+
+\begin{lstlisting}[language=JavaScript, caption={样本序号策略与累积重置（main.js 节选）}, label={lst:acc}]
+const canAccum = P.accumulate && (P.paused || P.timeRate === 0.0);
+// 关闭累积时把序号钉在 0：没有平均的移动序号 = 时域抖动 = 可见闪烁
+geoUniforms.uSampleIndex.value = (canAccum && !jitterFrozen) ? sampleIndex : 0.0;
+...
+blendMat.uniforms.uMix.value =
+    (!canAccum || accReset) ? 1.0 : 1.0 / (accCount + 1.0);
+accCount = Math.min(accCount + 1, 4096);
+if (canAccum) sampleIndex = Math.min(sampleIndex + 1, 4096);
+
+function resetAccumulation() {
+  accReset = true; accCount = 0; sampleIndex = 0; grainFrame = 0;
+}
+\end{lstlisting}
+
+\noindent
+这里的三条断言值得单独指出，因为它们各自对应一种常见的
+渐进渲染缺陷：
+
+\begin{proposition}[渐进累积的三条正确性条件]
+\label{prop:acc}
+设第 $n$ 帧的辐射亮度估计为 $f_n$，运行均值为
+$\bar f_n=n^{-1}\sum_{k\le n}f_k$。则：
+\begin{enumerate}[label=(\roman*),leftmargin=1.8em,itemsep=1pt,topsep=2pt]
+\item 若 $f_k$ 与 $k$ 无关（样本序号被冻结），则
+      $\bar f_n=f_1$ 对一切 $n$ 成立，累积完全不改善图像；
+\item 若相机的任何自由度或任何改变像的函数参数发生变化而未
+      重置累积，则均值把两个不同场景叠成重影；
+\item 若在累积\emph{之后}、写屏之前引入了随\emph{全局}帧计数变化
+      的随机量，则该量对 $n$ 不可平均，会在收敛图像上留下噪声地板。
+\end{enumerate}
+\end{proposition}
+
+\noindent 三条之中，(i) 与 (iii) 都在早期实现里真实发生过。
+具体地说：
+
+\begin{itemize}[leftmargin=1.5em,itemsep=2pt,topsep=3pt]
+\item \textbf{样本序号冻结。}早期版本的着色器从「抖动种子」
+      推导偏移，而主机侧为了「保持静止画面稳定」把种子写成常量，
+      结果是每一帧都取同一个亚像素点：累积在
+      $n=1$ 处即饱和。这一路径如今由 \texttt{freezeJitter(true)}
+      保留，专门用于在 V6 中复现旧行为作为对照——
+      表~\ref{tab:v6summary} 的 frozen 行显示其 rms 恒为 $0.000$，
+      正是命题~\ref{prop:acc}(i) 的数值确认。
+\item \textbf{抖动相位冻结。}复合通道的胶片颗粒用
+      $u_{\rm frame}=\texttt{frameCount}\bmod1024$ 作相位，
+      而 \texttt{frameCount} 是全局计数器、
+      \texttt{resetAccumulation()} 从不重置它。
+      于是同一配置的两次渲染必然得到不同的颗粒图案；
+      在 8 位 luma 上，这直接压出一条
+      $\sim4\times10^{-3}$ 的地板，比 V1--V5 的几何误差
+      高八个数量级，也使「暂停后画面是否收敛」变成不可判定问题。
+      修法是把相位绑定到\textbf{随累积历元重置}的计数器
+      \texttt{grainFrame}（见式~\eqref{eq:grain} 与其上下文）。
+\end{itemize}
+
+\paragraph{第三步：让「暂停即定帧」可验证。}
+修好之后，同一配置的重复渲染在 r2 与 post 两个块上
+（后者把 \texttt{grain}$=0.010$ 全部打开）的 rms、行 rms 与
+最大逐像素差\emph{全部}为 $0.000$（表~\ref{tab:v6summary}）。
+而参考残差随 $n$ 的下降为 $n^{-0.29}$（$n=1\to1024$ 共 $9.0$ 倍），
+与 $n^{-1/2}$ 的独立采样理想值有系统差距；
+§\ref{sec:v6} 已解释这是「同一确定性序列的前缀相关」所致，
+不是收敛阶不佳。图~\ref{fig:24}(a) 把三个块画在同一对数横轴上，
+其中淡灰叉号即修复前的旧数据。
+
+\paragraph{诚实边界。}
+本小节所有的「修复」都只是在断言的意义上被验证：
+（i）同样的输入给同样的输出（逐位可重复），
+（ii）残余高频能量随 $n$ 单调下降，
+（iii）每帧成本与 $n$ 线性成正比。
+我们\textbf{没有}证明 $n\to\infty$ 时均值收敛到某个「真值」：
+这个真值取决于单像素积分器的精度，而后者由
+$\varepsilon_{\rm px}<0.021$ 的逃逸半径误差（V5）与
+$tol$ 控制的步长误差共同界定。把「管线可重复」与
+「物理准确」混为一谈是渐进渲染论文里常见的过度声明，
+本文刻意把两者分开陈述。
+
+\subsection{后处理的精确系数}
+
+后处理链的每一级都写成显式系数，便于在附录~\ref{app:repro} 中复算。
+设累积后的辐射亮度为 $L$，则辉光提取用软拐点：
+\begin{equation}
+w(L)=\operatorname{clamp}\!\left(\frac{L-\tau+\kappa}{2\kappa},0,1\right)^{2}
+\cdot\Theta(L),\qquad \tau=1.6,\;\kappa=0.6,
+\label{eq:bright}
+\end{equation}
+其中 $\Theta$ 为 Heaviside 函数；$\kappa$ 与 $\tau$ 同量级，
+保证在阈值处既不产生硬边也不过度抬升低亮度区域。
+三级金字塔的合成权重为
+$(\omega_0,\omega_1,\omega_2)=(0.5,0.32,0.18)$，
+近似归一且按频带能量递减。
+可分离高斯的五抽头在\emph{两个方向}上使用同一组卷积系数
+\begin{equation}
+(0.2270270270,\;0.1945945946,\;0.1216216216,\;0.0540540541,\;0.0162162162),
+\label{eq:gauss}
+\end{equation}
+其和为 $0.61351$（跨两级共 25 抽头，总和 $0.61351^2\approx0.376$，
+因此式~\eqref{eq:bright} 之后还有线性归一的余地），
+偏移量取 $\Delta\cdot1.35$ 以补偿 5 抽头核的窄支撑。
+
+影调映射使用 ACES 的有理近似：
+\begin{equation}
+C(x)=\frac{x\,(2.51\,x+0.03)}{x\,(2.43\,x+0.59)+0.14},
+\label{eq:aces}
+\end{equation}
+它把 $[0,\infty)$ 单调压进 $[0,1]$，并在 $x\approx0.18$ 附近
+保持近似线性，从而使阴影边缘的对比度不被压缩。
+随后做精确的 sRGB 编码（阈值 $0.0031308$，斜率 $12.92$、
+指数 $1/2.4$），而不是用 $\gamma=2.2$ 近似——
+这一点在验证 $(1,1,1)$ 是否精确映射回 $(255,255,255)$
+时是可观测的。
+暗角为
+\begin{equation}
+V(\mathbf{q})=1-u_{\rm vig}\,\lVert\mathbf{q}\rVert^{2}\cdot1.35,
+\qquad \mathbf{q}\in[-1,1]^{2},
+\label{eq:vignette}
+\end{equation}
+胶片颗粒为
+\begin{equation}
+P(\mathbf{x})=\operatorname{fract}\!\Bigl(
+\sin\!\bigl(\langle \mathbf{x}\,u_{\rm res}+\mathbf{1}u_{\rm frame},\,
+(12.9898,\,78.233)\rangle\bigr)\cdot43758.5453\Bigr),
+\label{eq:grain}
+\end{equation}
+其中 $u_{\rm frame}=\texttt{grainFrame}\bmod1024$，
+而 \texttt{grainFrame} 随累积历元重置——这正是
+§\ref{sec:jitter} 里那条「被冻结的抖动相位」的修复。
+$P$ 在累积\emph{之后}叠加，因此它对样本数 $n$ 不可平均；
+它现在的可重复性是 V6 的 post 块所验证的性质。
+
+\subsection{程序化星场与逃逸方向}\label{sec:stars}
+
+星场必须是程序化的：任何贴图都会把解析度固定死，
+而本模拟器需要在任意视场角、任意相机位姿下保持同样的角分辨率，
+并且不允许纹理采样在引力透镜的强畸变区产生走样。
+星场因此定义为从方向到辐射亮度的纯函数
+\texttt{starField(dir)}，由三部分构成。
+
+\paragraph{星表：立方体面分层抽样。}
+方向按最大分量落到 6 个立方体面之一，面内使用
+$(u,v)\mapsto$ 格点。三层密度分别是
+$s_L=34\cdot2.35^{\,L}$（$L=0,1,2$），
+每层检查 $3\times3$ 邻域，星等服从
+\begin{equation}
+\mathrm{mag}(h)=h^{9},\qquad
+\mathrm{size}(h)=0.008+0.030\,h^{2},\qquad h\in[0,1),
+\label{eq:starmag}
+\end{equation}
+其中 $h$ 为逐星哈希。$h^{9}$ 使亮星稀有（约 $1\%$ 的星
+承担大部分通量），而 $\mathrm{size}\propto h^{2}$ 让亮星也更大，
+二者共同给出接近真实星表的动力学范围。
+星点用高斯点扩散函数 $\exp[-d^{2}/(2\,\mathrm{size}^{2})]$ 着色，
+并按层权重 $1/(1+2.2L)$ 衰减（外层面密度高、单星更暗）。
+色温服从 $T=\mathrm{mix}(2800,24000,h^{0.6})$ K，
+经 §\ref{sec:shift} 的 CIE 1931 轨迹映射为线性 sRGB。
+
+\paragraph{银河带。}
+一条固定方向的高斯带模拟银道面：
+\[
+\mathrm{band}=\exp\Bigl[-\Bigl(\frac{\hat{\mathbf{d}}\cdot\hat{\mathbf{n}}_{b}}{0.30}\Bigr)^{2}\Bigr],
+\qquad
+\hat{\mathbf{n}}_{b}=\operatorname{norm}(0.31,\,0.87,\,-0.38),
+\]
+并以两个尺度的 fBm 调制其亮度，
+叠加大约相当于 $7$ 个 8 位码值的暖色偏移。
+它存在的意义不是装饰：一条连续、低对比度的背景
+使引力透镜的\textbf{二阶像与爱因斯坦环}在无盘配置下仍然可见，
+否则纯点星背景会掩盖掉剪切畸变。
+
+\paragraph{逃逸方向（关键细节）。}
+光线逃逸时，测地线积分给出的是轨道平面内的一组坐标，
+而不是三维方向；若直接用当前视线方向去采样星场，星图会被
+\emph{刚性旋转}到错误位置——这是把二维 ODE 解接回三维场景时
+最容易出错的一步。正确的重建使用平面正交基
+$(\mathbf{e}_{\varphi},\mathbf{e}_1,\mathbf{e}_2)$（式~\eqref{eq:plane_basis}）：
+\begin{equation}
+\hat{\mathbf{e}}_r=\cos\varphi\,\mathbf{G}_{E1}+\sin\varphi\,\mathbf{G}_{E2},
+\qquad
+\hat{\mathbf{e}}_\varphi=-\sin\varphi\,\mathbf{G}_{E1}+\cos\varphi\,\mathbf{G}_{E2},
+\label{eq:escapedir}
+\end{equation}
+\begin{equation}
+\mathbf{d}_{\rm esc}
+=\operatorname{norm}\!\left(\frac{\dd r}{\dd\varphi}\,\hat{\mathbf{e}}_r
++r\,\hat{\mathbf{e}}_\varphi\right),
+\qquad
+\frac{\dd r}{\dd\varphi}=-\frac{1}{u^{2}}\frac{\dd u}{\dd\varphi},
+\qquad r=\frac1u .
+\label{eq:escapedir2}
+\end{equation}
+式~\eqref{eq:escapedir2} 的几何含义是：在极坐标下位置矢量
+$\mathbf{p}=r\hat{\mathbf{e}}_r$ 对 $\varphi$ 求导，得到
+$\dot r\hat{\mathbf{e}}_r+r\hat{\mathbf{e}}_\varphi$，
+所以局部切向就是逃逸方向本身（在 $r\to\infty$ 处即远场方向）。
+着色器中写作三行：
+
+\begin{lstlisting}[language=GLSL, caption={逃逸方向重建与星场采样（shaders.js 节选）}, label={lst:escape}]
+er = cos(phi) * G_E1 + sin(phi) * G_E2;   // 平面内径向
+ep = -sin(phi) * G_E1 + cos(phi) * G_E2;  // 平面内切向
+float rr = 1.0 / u;                       // 当前半径
+float drdphi = -du / (u * u);             // dr/dphi
+vec3 tdir = normalize(drdphi * er + rr * ep);
+color += trans * starField(tdir) * uStarBright;
+\end{lstlisting}
+
+\noindent
+V5（表~\ref{tab:v5}）测的正是这一步：把逃逸半径从 $140\,\M$
+改成解析无穷远，出射方向的变化折算到屏幕上最多
+$0.021$\,px。也就是说，有限逃逸半径带来的不是亮度误差
+（亮度已在远场按 $1/r^{2}$ 加权），而仅是一个
+\emph{亚像素的角度}误差——这就是把 $\varepsilon$ 折算成
+像素而不是保留为角度的价值所在。
+
+\paragraph{径向量子退化。}
+当 $\sin\psi<10^{-5}$ 时（式~\eqref{eq:plane_basis} 的平面退化），
+积分得到的平面基不可靠。此时按最近点的符号直接判定：
+若 $\mathbf{n}\cdot\hat{\mathbf{e}}_r<0$ 光线落向视界（输出黑），
+否则它沿径向逃逸、直接以原方向采样星场。
+分支的这一侧在 V4a 中被单独检验：径向或近径向光线的
+偏折角在 $b\to$ 大时趋于 $0$，闭式与追踪器一致到
+$4.4\times10^{-16}$。
+
+\subsection{盘的时变结构：湍流与开普勒剪切}\label{sec:turb}
+
+静态的轴对称薄盘看起来过于「工业」。真实的吸积盘是湍流的，
+而本模拟器要在不牺牲物理一致性的前提下给出这种质感，
+做法是把湍流写在\textbf{共动角坐标}里：
+\begin{equation}
+\psi_{\rm rel}=\arctan(p_z,p_x)-\Omega(r)\,t,\qquad
+\Omega=\frac{1}{r^{3/2}},
+\label{eq:shear}
+\end{equation}
+随后把 $\psi_{\rm rel}$ 展开到三维采样点
+$\mathbf{q}=(r\cos\psi_{\rm rel},\,r\sin\psi_{\rm rel},\,0.30\,r)/2.2$
+并取两级值噪声（value noise）：
+\begin{equation}
+n_z(\mathbf{q})=0.62\,v(\mathbf{q})+0.38\,v(2.3\,\mathbf{q}+\mathbf{5.3}).
+\label{eq:fbm}
+\end{equation}
+湍流对辐射亮度的作用写成乘性调制
+\begin{equation}
+S\leftarrow S\cdot
+\exp\!\bigl[3.1\,u_{\rm turb}\,(n_z-\tfrac12)\bigr]\cdot
+\bigl[1+u_{\rm turb}\,(0.9\,n_z-0.45)\bigr],
+\label{eq:turbmod}
+\end{equation}
+第一项给通量的乘性起伏，第二项给局部对比度的加强。
+
+三个细节使这个方案不只是「噪声装饰」：
+
+\begin{itemize}[leftmargin=1.5em,itemsep=2pt,topsep=3pt]
+\item \textbf{剪切是自动的。}因为 $\Omega\propto r^{-3/2}$，
+      式~\eqref{eq:shear} 对 $t$ 求导即得 $\partial\psi/\partial t=-\Omega$，
+      内圈的湍流图案本来就比外圈转得快，无需额外拉伸。
+      这正是差动旋转在共动坐标里的正确表达。
+\item \textbf{$z$ 方向的拉伸是物理的。}采样点的 $z$ 分量取
+      $0.30r$（而不与 $r$ 一起缩放），使湍流单元在垂直方向
+      被压扁，与薄盘 $H/r\ll1$ 的几何一致。
+\item \textbf{振幅与环境耦合。}乘性调制破坏轴对称但保持
+      \emph{局部}的发射率标度，因此盘总体通量廓线
+      （图~\ref{fig:07}）在一段时间平均后仍然收敛到
+      式~\eqref{eq:pt}——这使「好看」与「可验证」不冲突。
+\end{itemize}
+
+\noindent
+当 $u_{\rm turb}=0$ 时式~\eqref{eq:turbmod} 严格退化为 $S$，
+所以经典预设与对照实验（\S\ref{sec:presets}）可以完全关闭湍流。
+
+\subsection{桌面打包：从源码到便携可执行文件}\label{sec:pack}
+
+交付要求是「文件夹里双击 exe 即可运行，无需任何额外操作」。
+实现方式是一个约 300 行的 Python 启动器加上一个
+PyInstaller 打包脚本，二者都不参与渲染。
+
+\paragraph{启动器。}
+\texttt{launcher.py} 负责四件事：
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt,topsep=3pt]
+\item \textbf{端口与静态服务。}
+      \texttt{free\_port()} 先在 $127.0.0.1$ 上取一个空闲端口，
+      再用 \texttt{ThreadingHTTPServer} 提供 \texttt{web/} 目录；
+      绑定回环地址，因此不暴露到局域网。
+\item \textbf{DPI 感知。}
+      通过 \texttt{SetProcessDpiAwarenessContext} 的
+      \texttt{PER\_MONITOR\_AWARE\_V2} 回退链
+      （V2$\to$V1$\to$系统 DPI），使 150\%/200\% 缩放下
+      WebView2 控件与窗口的物理像素尺寸一致。
+      若不做这一步，高 DPI 下窗口会按「控件比窗口大」渲染，
+      表现为画面被裁切。
+\item \textbf{视口钉定。}
+      启动器通过 \texttt{evaluate\_js} 连续推送
+      \texttt{window.\_\_BH\_HOST\_VIEWPORT}
+      共 240 次（覆盖窗口初始化的动画窗口期），
+      主机侧 \texttt{allocateTargets()} 优先使用该值设置画布 CSS 尺寸。
+      这是对 WebView2 高 DPI 视口上报不一致的实用兜底。
+\item \textbf{回退路径。}若 WebView2 运行时不可用，
+      启动器回退到系统默认浏览器；命令行还提供
+      \texttt{--server-only}、\texttt{--browser}、\texttt{--fullscreen}
+      与 \texttt{--probe}（打印视口与 GPU 探测结果后退出）。
+\end{enumerate}
+
+\paragraph{打包。}
+\texttt{build\_portable.ps1} 调用 PyInstaller，参数为
+\texttt{--windowed --onedir --add-data "web;web"}，
+并把 \texttt{docs/*.webp} 一并复制。
+排除清单里显式删掉了 \texttt{tkinter}、\texttt{matplotlib}、
+\texttt{numpy}、\texttt{PIL}、\texttt{PyQt5}、\texttt{pandas}、
+\texttt{scipy}——启动器只依赖标准库与 \texttt{webview2} 绑定，
+任何被 PyInstaller 的启发式扫描拖进来的科学计算库
+都会让包体积从几十兆膨胀到几百兆。
+最终产物是一个单层文件夹（保持顶层目录结构，
+避免解压后出现「包中包」，这也是一条 CI 约束），
+用户双击其中的 exe 即进入全屏预览。
+
+\paragraph{GPU 路径。}
+WebView2 默认可能选择软件光栅。启动器显式设置
+\path{WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS}，
+启用 ANGLE 的 D3D11 后端、
+\path{--enable-gpu-rasterization} 与
+\path{--ignore-gpu-blocklist}，使 NVIDIA/AMD/Intel 的
+硬件路径被优先选中。落在硬件路径时 HUD 会显示
+\texttt{RGBA16F} 与真实 GPU 名称；若因驱动黑名单回落，
+HUD 显示 \texttt{LDR} 与软件渲染器名称。
+本文的所有测量都注明了两者中的哪一个（见 §\ref{sec:perf}：
+性能数据的机器是 Intel UHD 软光栅，这恰是最坏情形）。
+
+\subsection{交互界面：中心不变量、全屏预览与滚动条}\label{sec:ui}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.99\linewidth]{f23_app_layout}
+\caption{界面布局的三种状态与「中心不变量」。(a) 侧栏展开：
+画布占据 \texttt{\#stage}，右侧为参数面板；
+(b) 侧栏收起（\texttt{body.nopanel}）：面板 \texttt{display:none}，
+画布随 flex 容器重新分配而变宽，
+\emph{但阴影圆心仍落在画布几何中心}；
+(c) 全屏预览（\texttt{H} 键）：面板收起、浮层控件淡出，
+整块画布用于观察。下方圆点轨迹为三种状态下由
+\texttt{measureShadow()} 回读得到的阴影圆心与半径：
+圆心相对画布中心的偏差在三种状态下均为 $0$\,px。}
+\label{fig:23}
+\end{figure}
+
+\paragraph{中心不变量。}
+一个容易忽视但用户第一时间会注意到的缺陷是：侧栏收起时
+画布变宽，而相机的投影中心若仍按旧尺寸计算，
+黑洞就会偏离画面中心。本实现的处理是把
+「画布尺寸」与「面板可见性」彻底解耦：
+\texttt{\#stage} 是 \texttt{flex:1 1 auto} 且 \texttt{min-width:0}，
+画布按 \texttt{getBoundingClientRect()} 铺满 \texttt{\#stage}；
+面板收起只是 \texttt{body.nopanel \#panel\{display:none\}}，
+随后 \texttt{requestAnimationFrame} 里调用一次
+\texttt{allocateTargets()}。相机始终看向原点、
+投影中心恒为画布中心，因此\textbf{黑洞在侧栏开或关时都位于
+主画面几何中心}——这不是靠额外平移补偿实现的，而是结构上
+不存在「画布中心漂移」这一自由度。图~\ref{fig:23} 用三种状态下
+回读的阴影圆心验证了这一点。
+
+\paragraph{全屏预览。}
+侧栏提供两个方向的按钮（\texttt{btn-hide} 与 \texttt{btn-collapse}），
+收起后画布右上角出现 \texttt{btn-expand} 供恢复；
+键盘 \texttt{H} 与 \texttt{F} 都是同一个 \texttt{togglePanel()} 的快捷方式；
+\texttt{Esc} 只在侧栏已收起时把面板还原，因此不会与这两者的切换语义混淆。
+由于 \texttt{OrbitControls} 的 \texttt{target} 恒为原点且
+\texttt{enablePan} 为 \texttt{false}，全屏切换不会改变轨道半径，
+相机位置在切换前后逐位相同。
+
+\paragraph{滚动条。}
+侧栏有 30 余个控件，默认滚动条在深色界面上是一条亮白竖条，
+视觉上与场景争夺注意力。本实现改为
+「细轨 + 半透明拇指 + 透明槽」：
+\begin{lstlisting}[language=CSS, caption={自定义细滚动条（style.css 节选）}, label={lst:scroll}]
+#panel { scrollbar-width: thin;
+         scrollbar-color: rgba(112,145,190,0.35) transparent;
+         scrollbar-gutter: stable; }        /* 防止出现/消失时抖动 */
+#panel::-webkit-scrollbar { width: 9px; }
+#panel::-webkit-scrollbar-track { background: transparent; }
+#panel::-webkit-scrollbar-thumb {
+  background: rgba(112,145,190,0.28);
+  border: 3px solid transparent;            /* 3px 透明边框 = 视觉 3px 拇指 */
+  background-clip: padding-box; border-radius: 6px; }
+#panel::-webkit-scrollbar-thumb:hover { background: rgba(140,185,240,0.5); }
+\end{lstlisting}
+\noindent
+\texttt{scrollbar-gutter:stable} 是这里最重要的一行：
+没有它，面板内容高度跨越阈值时滚动条会出现/消失，
+引起整个参数列表横向跳动几个像素——在 60\,fps 的交互里
+这比滚动条本身的颜色更刺眼。用 \texttt{border} 加
+\texttt{background-clip} 而不是直接缩窄宽度，是为同时兼容
+Firefox 的 \texttt{scrollbar-\*} 与 Chromium 的
+\texttt{::-webkit-scrollbar} 两套机制。
+
+\paragraph{参数默认值。}
+表~\ref{tab:defaults} 列出出厂参数。其中三处数值值得解释：
+\texttt{tol}$=0.03$ 与 \texttt{maxSteps}$=300$ 是
+\S\ref{sec:perf} 的代价模型给出的交互预算点（在 $1000\times600$
+视口上约 $0.4$\,s/帧的软光栅成本，硬件路径下则为个位数毫秒）；
+\texttt{escapeR}$=140\,\M$ 由 V5 确定（其方向误差 $<0.021$\,px）；
+\texttt{escapeR} 与 \texttt{tol} 的组合决定了远场步长，
+因此这两个值是被实验挑选的，而不是估计的。
+
+\input{tables/t13_defaults}
+
+\subsection{参数预设与剖面切换}\label{sec:presets}
+
+\input{tables/t14_presets}
+
+表~\ref{tab:presets} 的七个预设不是「风格过滤器」，而是
+\textbf{八组可复现实验条件}。每个预设都完整写出全部 37 个键
+（而不是只写差异项），因此从任何状态点击任何预设都会到达
+同一个配置——这一点在软件里用一条断言保证，
+也使得论文里引用的每个预设都能在附录~\ref{app:repro} 中
+用一行命令重建。
+
+\begin{itemize}[leftmargin=1.5em,itemsep=2pt,topsep=3pt]
+\item \textbf{经典视界（推荐）}：与出厂默认只差 \texttt{bloom}$=0.38$。
+      它是最通用的观察条件，也是所有截图的默认。
+\item \textbf{近观光子环}：$r_0=12\,\M$、仰角 $7^\circ$、
+      $\mathrm{fov}=42^\circ$，并把 \texttt{paused} 置真。
+      此时阴影角半径接近 $90^\circ$ 的一半，光子环的多重像
+      与盘的一阶、二阶像在画面里同时可见（图~\ref{fig:16}）。
+      \texttt{maxSteps} 提到 $520$ 是必要的：这个相机位置下
+      近临界光线绕行圈数最多。
+\item \textbf{俯视盘面}：$r_0=40\,\M$、仰角 $58^\circ$。
+      接近正面的视角用于检验盘通量廓线的可见形态，
+      并与图~\ref{fig:16} 的像阶标注对照。
+\item \textbf{纯引力透镜（无盘）}：\texttt{showDisk}$=0$、
+      \texttt{starBright}$=1.3$。这条预设把用户带到
+      §\ref{sec:stars} 的星场与式~\eqref{eq:escapedir2} 的
+      逃逸方向重建上：画面里只有背景星场的剪切，
+      因此任何星图错位都会立刻显形。
+\item \textbf{X 射线盘（$T=10^{7}$\,K）}：把峰值温度提到
+      $10^{7}$\,K 并切到 \texttt{colorMode}$=1$ 的物理配色。
+      在当前黑体映射下，$10^{7}$\,K 的黑体辐射峰值位于
+      软 X 射线波段，其 CIE 色度几乎饱和在蓝色末端；
+      这条预设因此是一个\emph{诚实的越界演示}——
+      它显示的是「温度轴的色彩坐标」，不是人眼在 X 射线下的视觉。
+\item \textbf{牛顿盘对照（SS 1973）}：仅把
+      \texttt{fluxModel} 切到 Shakura--Sunyaev 剖面。
+      与推荐预设在其余 36 个键上完全一致，因此两者之间的
+      所有视觉差异都可归因于式~\eqref{eq:ss} 与式~\eqref{eq:pt}
+      的差别——这是本文「对照实验」的实现形式。
+\item \textbf{高分辨率静帧}：\texttt{renderScale}$=1.5$、
+      \texttt{maxSteps}$=800$、\texttt{tol}$=0.015$，
+      并暂停。它用于输出论文插图（图~\ref{fig:19}--\ref{fig:20}），
+      也用于验证 §\ref{sec:perf} 代价模型在高成本端的可外推性。
+\end{itemize}
+
+\paragraph{剖面切换与累积的相互作用。}
+实现中发现并修正的一个真实缺陷是：\texttt{fluxModel}
+（Page--Thorne 与 Shakura--Sunyaev 的开关）最初没有进入参数键
+\texttt{paramsKey()}。后果是——在 \emph{暂停累积}状态下切换剖面时，
+累积器不会重置，于是运行均值开始把两套\emph{不同物理模型}
+的辐射亮度按 $1/(n+1)$ 叠加。由于两套剖面在峰值区相差
+$3$ 倍以上（表~\ref{tab:flux}），这个混合会产生一个
+既不等于 PT 也不等于 SS 的稳定图像，而且它\emph{看起来}完全正常：
+画面不会闪烁，只会缓慢地滑向一个错误的中间值。
+这正是「参数键必须穷举所有改变像的量」的教训；
+它也是唯一一个会伪造物理结论而不是仅仅降低画质的实现缺陷，
+因此被列入 §\ref{sec:intro} 的修正清单。
+
+\noindent
+修正后的 \texttt{paramsKey()} 包含 24 个键：
+\texttt{maxSteps}、\texttt{tol}、\texttt{stepScale}、\texttt{escapeR}、
+\texttt{diskInner}、\texttt{diskOuter}、\texttt{diskThick}、
+\texttt{diskTemp}、\texttt{diskBright}、\texttt{diskOpacity}、
+\texttt{turb}、\texttt{spin}、\texttt{kepler}、\texttt{doppler}、
+\texttt{fluxModel}、\texttt{showDisk}、\texttt{showStars}、
+\texttt{starBright}、\texttt{colorMode}、\texttt{dispTMin}、
+\texttt{dispTMax}、\texttt{renderScale}、\texttt{fov}、\texttt{paused}；
+相机键则取位置矢量的五位小数。
+任一键变化即触发 \texttt{resetAccumulation()}，
+并由 §\ref{sec:perf} 的探针在每轮测量中\emph{断言}
+受追踪分辨率与 \texttt{renderScale} 保持不变。
+
+\paragraph{小结。}
+本节把「公式变成像素」的全部中间步骤写成了可检查的对象：
+四段通道的边界与精度、抖动的相位与样本序号、
+后处理的六个显式系数、星场的方向重建、
+湍流的共动坐标系数、打包与 GPU 路径、
+以及界面的中心不变量。其中两处实现缺陷
+（样本序号冻结、抖动相位不随历元重置）与一处参数键遗漏
+（\texttt{fluxModel}）都是在验证过程中被发现的，
+并已在代码中修正、由 V6 与表~\ref{tab:v6summary} 固化。
+下一节报告这些机制在实际运行中的结果。

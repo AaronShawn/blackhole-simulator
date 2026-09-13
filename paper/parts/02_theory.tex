@@ -1,0 +1,428 @@
+\section{物理模型}\label{sec:theory}
+
+本节从施瓦西度规出发，建立模拟器所使用的全部物理量。我们始终坚持几何单位制
+$G=c=1$，长度以黑洞质量 $M$ 为基本单位，因此 $\rs=2M$ 记作 $r=2M$。
+除特别说明外，所有半径均以 $M$ 为单位无量纲化。
+
+\subsection{时空与静态观测者}\label{sec:metric}
+
+施瓦西度规在标准坐标 $(t,r,\theta,\varphi)$ 下的线元为
+\begin{equation}
+\dd s^{2}=-\Bigl(1-\frac{2M}{r}\Bigr)\dd t^{2}
++\Bigl(1-\frac{2M}{r}\Bigr)^{-1}\dd r^{2}
++r^{2}\bigl(\dd\theta^{2}+\sin^{2}\theta\,\dd\varphi^{2}\bigr).
+\label{eq:schw}
+\end{equation}
+度规是静态（存在类时 Killing 矢量 $\xi=\partial_{t}$）与球对称（存在三个
+Killing 矢量，其中 $\eta=\partial_{\varphi}$ 生成轴向旋转）的。这两个对称性
+分别给出沿零测地线守恒的能量与角动量，是把测地线方程降为二阶常微分方程的
+全部依据。
+
+模拟器中的相机被建模为\emph{静态观测者}（fiducial observer，FIDO）：一个
+固定在坐标半径 $r_{0}$ 处、相对黑洞静止的观测者。其四维速度归一化为
+\begin{equation}
+u^{\mu}=\Bigl(1-\frac{2M}{r_{0}}\Bigr)^{-1/2}\delta^{\mu}{}_{t},
+\qquad
+u_{\mu}u^{\mu}=-1 .
+\label{eq:fido}
+\end{equation}
+与 FIDO 自然关联的局部正交归一标架（tetrad）为
+\begin{equation}
+\hat e_{(\hat t)}=\Bigl(1-\tfrac{2M}{r_{0}}\Bigr)^{-1/2}\partial_{t},\quad
+\hat e_{(\hat r)}=\Bigl(1-\tfrac{2M}{r_{0}}\Bigr)^{1/2}\partial_{r},\quad
+\hat e_{(\hat\theta)}=\frac{1}{r_{0}}\partial_{\theta},\quad
+\hat e_{(\hat\varphi)}=\frac{1}{r_{0}\sin\theta}\partial_{\varphi}.
+\label{eq:tetrad}
+\end{equation}
+该标架是\emph{物理}观测者的标架：FIDO 用刚性尺测得的两点径向距离是
+$\sqrt{1-2M/r_{0}}\,\Delta r$，而不是坐标差 $\Delta r$。这一点在
+第~\ref{sec:shadow} 节计算阴影角半径时至关重要——忽略它会带来
+$4\%$（$r_{0}=26M$）到 $35\%$（$r_{0}=4M$）的角度偏差，
+第~\ref{sec:v4} 节与图~\ref{fig:14} 给出了定量结果。
+
+\subsection{零测地线的第一积分}\label{sec:firstintegral}
+
+设光子以仿射参数 $\lambda$ 沿零测地线运动，波矢 $k^{\mu}=\dd x^{\mu}/\dd\lambda$。
+由 Killing 对称性，
+\begin{equation}
+E\equiv-k_{\mu}\xi^{\mu}=\Bigl(1-\frac{2M}{r}\Bigr)\frac{\dd t}{\dd\lambda},
+\qquad
+L\equiv k_{\mu}\eta^{\mu}=r^{2}\sin^{2}\theta\,\frac{\dd\varphi}{\dd\lambda},
+\label{eq:EL}
+\end{equation}
+沿轨道为常数。不失一般性取光子在赤道面内运动（球对称性保证任意轨道可
+通过旋转坐标轴实现这一简化；判据与构造见第~\ref{sec:plane} 节），
+于是 $\theta=\pi/2$。
+
+零条件 $k_{\mu}k^{\mu}=0$ 给出
+\begin{equation}
+\Bigl(\frac{\dd r}{\dd\lambda}\Bigr)^{2}
+=E^{2}-\frac{L^{2}}{r^{2}}\Bigl(1-\frac{2M}{r}\Bigr),
+\label{eq:null}
+\end{equation}
+这与把 $\bigl(\dd r/\dd\lambda\bigr)^{2}+V_{\rm eff}(r)=E^{2}$ 视为
+一维势问题等价，其中\emph{有效势}为
+\begin{equation}
+V_{\rm eff}(r)=\frac{L^{2}}{r^{2}}\Bigl(1-\frac{2M}{r}\Bigr).
+\label{eq:Veff}
+\end{equation}
+定义冲击参数
+\begin{equation}
+b\equiv\frac{L}{E},
+\label{eq:impact}
+\end{equation}
+则式~\eqref{eq:null} 可重写为不含 $E$ 的形式
+$\bigl(\dd r/\dd\lambda\bigr)^{2}=E^{2}\bigl[1-b^{2}V_{\rm eff}(r)/L^{2}\bigr]$，
+说明轨道几何完全由 $b$ 决定。
+
+在轨道平面内以 $\varphi$ 为自变量、$u=1/r$ 为因变量，由
+$\dd r/\dd\varphi=-u^{-2}\dd u/\dd\varphi$ 与
+$\dd\varphi/\dd\lambda=L u^{2}$，式~\eqref{eq:null} 化为\emph{轨道方程}
+\begin{equation}
+\Bigl(\frac{\dd u}{\dd\varphi}\Bigr)^{2}
+=\frac{1}{b^{2}}-u^{2}+2Mu^{3}
+\equiv f(u),
+\label{eq:orbit1}
+\end{equation}
+对其求 $\varphi$ 的导数、并用 $\dd u/\dd\varphi\neq0$ 约去公因子，得到本文
+实际积分的二阶方程
+\begin{equation}
+\boxed{\;\frac{\dd^{2}u}{\dd\varphi^{2}}=-u+3Mu^{2}\;}
+\label{eq:geodesic}
+\end{equation}
+这正是施瓦西时空中零测地线的标准形式~\cite{chandrasekhar1983}。它不含任何
+矩阵或张量运算，是本文把广义相对论光线追踪塞进单遍片元着色器的关键。
+
+式~\eqref{eq:orbit1} 还给出一个廉价而严格的\emph{第一积分监测}：
+沿任意精确轨道，$f(u)=\dd u/\dd\varphi$ 的平方恒等于 $1/b^{2}-u^{2}+2Mu^{3}$。
+数值积分时把二者之差
+\begin{equation}
+\mathcal{R}(u,\dot u)=\Bigl|\dot u^{2}-\bigl(1/b^{2}-u^{2}+2Mu^{3}\bigr)\Bigr|
+\label{eq:residual}
+\end{equation}
+作为守恒残差，即可在不依赖任何解析解的情况下评估积分器质量。
+第~\ref{sec:v2} 节的 V2 实验正是基于 $\mathcal{R}$。
+
+\subsection{临界冲击参数、光子球与阴影}\label{sec:shadow}
+
+$\dd^{2}u/\dd\varphi^{2}=0$ 等价于有效势的极值条件。由 $V_{\rm eff}$ 关于 $r$
+求极值，
+\begin{equation}
+\frac{\dd}{\dd r}\Bigl[\frac{1}{r^{2}}\Bigl(1-\frac{2M}{r}\Bigr)\Bigr]=0
+\quad\Longrightarrow\quad
+r=3M,
+\label{eq:photonsphere}
+\end{equation}
+即\emph{光子球}半径
+\begin{equation}
+\bph=3M .
+\end{equation}
+圆轨道存在要求同时满足 $\dd r/\dd\lambda=0$，代入式~\eqref{eq:null} 得临界
+冲击参数
+\begin{equation}
+\bc=\frac{\bph}{\sqrt{1-2M/\bph}}
+=\frac{3M}{\sqrt{1-2/3}}
+=\sqrt{27}\,M=3\sqrt3\,M\approx5.1961524227\,M .
+\label{eq:bc}
+\end{equation}
+$b<\bc$ 的光子必然落入视界；$b>\bc$ 的光子必然逃逸到无穷远；
+$b=\bc$ 的光子被困在光子球上。投影到天球上，$b<\bc$ 的方向构成一个
+暗区，这就是\emph{黑洞阴影}~\cite{bardeen1973,luminet1979,synge1966}。
+
+对 $r_{0}$ 处的静态观测者，阴影的\emph{角半径} $\psi_{\rm sh}$ 由局部标架
+内的正交关系给出。设观测者静止、光子沿径向近似向外，则在 FIDO 标架中
+光子的本地方向与径向的夹角满足
+\begin{equation}
+\sin\psi_{\rm sh}=\frac{\bc}{r_{0}}\sqrt{1-\frac{2M}{r_{0}}}
+=\frac{3\sqrt3\,M}{r_{0}}\sqrt{1-\frac{2M}{r_{0}}} .
+\label{eq:shangle}
+\end{equation}
+注意 $\sqrt{\bc^{2}(1-2M/r_{0})}$ 是 FIDO 在自身标架中测得的「冲击参数」
+（在平直空间中它正是瞄准距离），而因子 $\sqrt{1-2M/r_{0}}$ 来自
+式~\eqref{eq:tetrad} 中径向基矢的拉伸。若错误地使用平直空间关系
+$\psi=\arcsin(b/r_{0})$，或使用施瓦西坐标角
+$\psi=\arcsin(b\sqrt{1-2M/r_{0}}/r_{0})$，都会偏离真值；
+三者随 $r_{0}$ 的差异见第~\ref{sec:v4} 节。
+
+把式~\eqref{eq:shangle} 换算成像素，得到模拟器内建校验的解析参照：
+\begin{equation}
+R_{\rm px}=f_{\rm px}\tan\psi_{\rm sh},
+\qquad
+f_{\rm px}=\frac{H/2}{\tan(\theta_{\rm fov}/2)},
+\label{eq:shadowpx}
+\end{equation}
+其中 $H$ 为绘制缓冲区的像素高度、$\theta_{\rm fov}$ 为垂直视场角。
+式~\eqref{eq:shadowpx} 使用 $\tan$ 而非 $\sin$ 是因为 $f_{\rm px}$ 定义在
+透视投影平面上。$r_{0}=26M$ 时 $\psi_{\rm sh}=11.0702^{\circ}$，
+在 $1000\times600$、$\theta_{\rm fov}=58^{\circ}$ 下
+$R_{\rm px}=158.83$，而模拟器实时测得的黑区半径与之相符到 $0.53\%$
+（表~\ref{tab:v3}）。
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{f01_geodesic_rays}
+\caption{轨道平面内的光子轨迹（$M=1$）。左：$r(\varphi)$ 的极坐标轨道，自内向外
+依次为 $b/\bc=0.9$（坠落）、$1.02$、$1.10$、$1.5$、$3$（逃逸）。右：同一组轨道的
+笛卡尔视图，原点为黑洞，虚线圆为光子球 $r=3M$。轨道由
+\texttt{pytrace.py} 以双精度 RK4 积分得到；本文着色器使用完全相同的方程与
+积分格式，仅把精度降为 32 位浮点。巨大的偏折角（$b\to\bc^{+}$ 时
+$\Delta\varphi\to\infty$）是实时积分器必须使用自适应步长的根本原因。}
+\label{fig:01}
+\end{figure}
+
+\subsection{偏折角与弱场极限}\label{sec:deflection}
+
+对 $b>\bc$ 的光子，设其最近距离为 $r_{\min}$（即 $u_{\max}=1/r_{\min}$），
+总方位角增量为
+\begin{equation}
+\Delta\varphi=2\int_{0}^{u_{\max}}\frac{\dd u}{\sqrt{f(u)}},
+\qquad
+\alpha\equiv\Delta\varphi-\pi ,
+\label{eq:deflection}
+\end{equation}
+其中 $f(u)$ 由式~\eqref{eq:orbit1} 给出，$u_{\max}$ 为 $f(u)=0$ 的正根。
+$\alpha$ 即偏折角。在弱场极限 $b\gg M$ 下，标准后牛顿展开为
+\begin{equation}
+\alpha=\frac{4M}{b}+\frac{15\pi}{4}\frac{M^{2}}{b^{2}}
++\frac{128}{3}\frac{M^{3}}{b^{3}}
++\frac{3465\pi}{64}\frac{M^{4}}{b^{4}}+\mathcal{O}\!\left(\frac{M^{5}}{b^{5}}\right).
+\label{eq:pn}
+\end{equation}
+第一项 $4M/b$ 是爱因斯坦的经典结果。本文用式~\eqref{eq:deflection} 的
+四阶积分与式~\eqref{eq:pn} 的级数对照，在 $b=400M$ 处两者相差
+$7.85\times10^{-9}$，在 $b=2000M$ 处相差 $4.16\times10^{-9}$，
+说明数值积分器在弱场（几何光学日常尺度）下同样可靠
+（图~\ref{fig:02}）。
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{f02_deflection}
+\caption{偏折角。左：$\alpha(b)$ 与弱场级数~\eqref{eq:pn} 的对照，横轴对数、
+纵轴以度计；$b\to\bc^{+}$ 时 $\alpha$ 对数发散。右：数值积分相对级数的
+相对偏差；在 $b\gtrsim20M$ 之后偏差由级数的截断误差主导，随 $b$ 以
+$b^{-2}$ 下降，说明四阶积分器本身的误差远小于此。}
+\label{fig:02}
+\end{figure}
+
+\subsection{吸积盘：Shakura--Sunyaev 与 Page--Thorne}\label{sec:disk}
+
+模拟器的辐射源是一个几何薄、光学厚、辐射效率与粘性无关的稳态吸积盘。
+盘物质沿圆测地线运动，其内边缘取为施瓦西时空的最内稳定圆轨道
+\begin{equation}
+\bisco=6M .
+\label{eq:isco}
+\end{equation}
+
+\paragraph{牛顿近似（SS 1973）。}
+Shakura 与 Sunyaev~\cite{ss1973} 在牛顿引力下假定内边界零扭矩，得到
+\begin{equation}
+F_{\rm SS}(r)=\frac{3M\dot M}{8\pi r^{3}}
+\Bigl[1-\Bigl(\frac{\bin}{r}\Bigr)^{1/2}\Bigr],
+\label{eq:ss}
+\end{equation}
+其中 $\dot M$ 为吸积率。该剖面在
+\begin{equation}
+\frac{\dd F_{\rm SS}}{\dd r}=0
+\;\Longrightarrow\;
+r=\frac{49}{36}\bin=1.36111\,\bin
+\end{equation}
+处取极大。注意 $49/36$ 是牛顿盘的特征常数，与自旋、与引力强度无关。
+
+\paragraph{广义相对论薄盘（NT 1973 / PT 1974）。}
+Novikov 与 Thorne~\cite{nt1973} 及 Page 与 Thorne~\cite{pt1974} 把上述模型
+推广到弯曲时空。对施瓦西黑洞，圆轨道上的比能、比角动量和角速度为
+\begin{equation}
+E(r)=\frac{1-2M/r}{\sqrt{1-3M/r}},\qquad
+L(r)=\frac{\sqrt{Mr}}{\sqrt{1-3M/r}},\qquad
+\Omega(r)=\sqrt{\frac{M}{r^{3}}} ,
+\label{eq:circular}
+\end{equation}
+其中恒等式
+\begin{equation}
+E-\Omega L=\sqrt{1-\frac{3M}{r}}
+\label{eq:redshift}
+\end{equation}
+在后面的辐射转移中会反复出现。Page--Thorne 通量为
+\begin{equation}
+F_{\rm PT}(r)=\frac{\dot M}{4\pi r}
+\Bigl(-\frac{\dd\Omega}{\dd r}\Bigr)
+\bigl(E-\Omega L\bigr)^{-2}B(r),
+\label{eq:pt}
+\end{equation}
+其中\emph{扭矩积分}为
+\begin{equation}
+B(r)=\int_{\bin}^{r}\bigl(E-\Omega L\bigr)\frac{\dd L}{\dd r'}\,\dd r' .
+\label{eq:torque}
+\end{equation}
+在施瓦西情形，把式~\eqref{eq:circular} 代入后被积函数化简为
+$\frac12 r^{-1/2}(r-6M)/(r-3M)$，于是 $B$ 有闭式表达
+\begin{equation}
+B(r)=(\sqrt r-\sqrt{\bin})
+-\frac{\sqrt3}{2}\ln\!\left[
+\frac{(\sqrt r-\sqrt3)(\sqrt{\bin}+\sqrt3)}
+{(\sqrt r+\sqrt3)(\sqrt{\bin}-\sqrt3)}
+\right],
+\label{eq:Bclosed}
+\end{equation}
+式中半径已按 $M=1$ 无量纲化。本文在第~\ref{sec:ntverify} 节用
+$4\times10^{6}$ 格点的密集积分独立核算式~\eqref{eq:Bclosed}，
+相对偏差为 $2.2\times10^{-15}$ 至 $2.6\times10^{-14}$。
+着色器内联了式~\eqref{eq:Bclosed}，并以式~\eqref{eq:pt} 归一化到自身峰值，
+因此渲染结果不依赖于 $\dot M$ 的绝对标定。
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{f07_disk_profiles}
+\caption{吸积盘剖面（$\bin=6M$，$\dot M=1$）。
+(a) PT 与 SS 的归一化通量 $F(r)$：两者在 $r\to\infty$ 时按 $\propto r^{-3}$
+一致，但在峰值区相差 $3$ 倍以上，峰值位置也从 $8.167M$ 外移到 $9.551M$。
+(b) 有效温度 $T\propto F^{1/4}$；四次根把上述 $3$ 倍差异压缩到约 $1.3$ 倍，
+这正是两者在视觉上相似但定量上不同的原因。
+(c) 相对论修正因子：PT/SS 比值单调趋近 $1$，$r=50M$ 时为 $0.812$，
+$r=10^{6}M$ 时为 $0.9985$。}
+\label{fig:07}
+\end{figure}
+
+\subsection{盘的热力学与能量守恒}\label{sec:ntverify}
+
+\paragraph{辐射效率。}
+落到内边缘的物质的比能为 $E(\bisco)$。把 $\bisco=6M$ 代入
+式~\eqref{eq:circular}，
+\begin{equation}
+E(\bisco)=\frac{1-2/6}{\sqrt{1-3/6}}=\frac{2\sqrt2}{3}
+=0.9428090415820634\ldots
+\end{equation}
+因此\emph{辐射效率}为
+\begin{equation}
+\eta=1-E(\bisco)=1-\frac{2\sqrt2}{3}
+=0.057190958417936644
+\approx5.7191\% .
+\label{eq:eta}
+\end{equation}
+作为对照，牛顿盘的效率只依赖于内边缘半径，
+$\eta_{\rm SS}=M/(2\bisco)=1/12=8.333\%$。二者的差异
+（PT 比 SS 低 $31\%$）来自近视界区域红移造成的能量损失。
+这两个数值均由 \texttt{audit\_nt.py} 独立复核。
+
+\paragraph{能量求和规则。}
+吸积盘在单位坐标半径内向外辐射的功率为
+\begin{equation}
+P'(r)=-\dot M\bigl[L(r)-L(\bin)\bigr]\frac{\dd\Omega}{\dd r},
+\label{eq:Pprime}
+\end{equation}
+它由「内边界零扭矩」这一边界条件导出。对式~\eqref{eq:Pprime} 分部积分并用
+圆轨道的第一定律 $\dd E/\dd r=\Omega\,\dd L/\dd r$，可得
+\begin{equation}
+\int_{\bin}^{\infty}P'(r)\,\dd r
+=\dot M\bigl[E(\infty)-E(\bin)\bigr]
+=\eta\dot M ,
+\label{eq:sumrule}
+\end{equation}
+即总辐射功率恰好等于内边缘处释放的束缚能。
+
+我们进一步检验通量本身是否满足同一守恒律，即考察
+\begin{equation}
+\mathcal{S}[w]=\frac{1}{\eta\dot M}\int_{\bin}^{\infty}
+4\pi r\,F_{\rm PT}(r)\,w(r)\,\dd r
+\label{eq:weighted}
+\end{equation}
+对不同几何权重 $w$ 的取值。表~\ref{tab:sumrule} 给出结果：
+\emph{只有 $w=E(r)$ 使 $\mathcal{S}=1$}（残差 $5.4\times10^{-11}$），
+而朴素的坐标面积权重 $w=1$ 给出 $1.0192$（偏离 $1.9\%$），
+共动体元的权重 $\sqrt{1-2/r}\sqrt{1-3/r}$ 给出 $0.9943$（偏离 $0.6\%$），
+其余候选权重偏离 $2\%$--$28\%$。作为对照，牛顿剖面在 $w=1$ 下满足
+$\mathcal{S}=0.99999999998$。
+
+这一结果值得强调：\textbf{朴素求和规则只是牛顿盘的精确性质}；
+对相对论通量，正确的守恒量应写成式~\eqref{eq:Pprime} 的扭矩恒等式，
+或等价地在被积函数中引入比能权重 $E(r)$。所幸渲染不依赖绝对归一化——
+着色器把剖面归一到自身峰值——但任何以 $4\pi rF\,\dd r$ 直接积分
+相对论通量来推算光度或吸积率的做法都会带来约 $1.9\%$ 的系统误差。
+
+\input{tables/t07_torque_integral}
+
+\input{tables/t08_sumrule}
+
+\paragraph{与牛顿盘对照。}
+表~\ref{tab:flux} 给出两套剖面在同一吸积率下的数值对照。除峰值高度与位置
+不同外，一个容易被忽视的事实是：PT 与 SS 在 $r=6.5M$ 处的比值只有
+$0.139$，即广义相对论在近内边缘区域把通量压低到牛顿值的 $1/7$。
+只有当 $r>10^{4}M$ 之后两者才接近到 $1\%$ 以内。
+
+\input{tables/t09_flux}
+
+\input{tables/t10_cumulative}
+
+\subsection{相对论频移与辐射强度}\label{sec:shift}
+
+盘物质的辐射在到达静态观测者时会发生频移。定义
+\begin{equation}
+\gfac\equiv\frac{\nu_{\rm obs}}{\nu_{\rm emit}}
+=\frac{k_{\mu}u^{\mu}_{\rm obs}}{k_{\mu}u^{\mu}_{\rm emit}} .
+\label{eq:gdef}
+\end{equation}
+把观测者的四维速度~\eqref{eq:fido} 与开普勒发射体的四维速度
+$u^{\mu}_{\rm emit}=u^{t}(1,0,0,\Omega)$（其中 $u^{t}=1/\sqrt{1-3M/r}$）代入，
+并利用 $k_{\varphi}=L$、$k_{t}=-E$，得到模拟器使用的闭式
+\begin{equation}
+\boxed{\;\gfac=\frac{1}{u^{t}\sqrt{1-2M/r_{0}}\,\bigl(1+\Omega\,b_{\rm axis}\bigr)}\;}
+\label{eq:g}
+\end{equation}
+其中
+\begin{equation}
+b_{\rm axis}\equiv\frac{L\,\hat y\cdot\hat L}{E}
+=\frac{(\vec L\cdot\hat y)}{E},
+\qquad \vec L=\vec r\times\vec k
+\label{eq:baxis}
+\end{equation}
+是光子的角动量沿盘轴（$\hat y$，即观测者视线在赤道面上的投影方向）的分量
+与能量之比。$\Omega b_{\rm axis}$ 项就是多普勒项。
+
+两种极端情形可用于自检：（i）视线沿盘轴（$b_{\rm axis}=0$）时，
+$\gfac=1/[u^{t}\sqrt{1-2M/r_{0}}]$，只剩引力红移；（ii）当发射体
+静止（$\Omega=0$、$u^{t}\to1/\sqrt{1-2M/r}$）时，
+$\gfac=\sqrt{1-2M/r}/\sqrt{1-2M/r_{0}}$，即标准的静态引力红移比。
+本文用四矢量直接求式~\eqref{eq:gdef} 的数值实现与闭式~\eqref{eq:g}
+逐点比对，两者相符到 $10^{-16}$（双精度舍入水平）。
+
+频移对观测量的作用分为两支。热辐射的\emph{比强度}满足
+$I_{\nu}/\nu^{3}$ 为洛伦兹不变量，因此对黑体谱（其形状由
+$I_{\nu}\propto\nu^{3}/[\exp(h\nu/kT)-1]$ 给出）有严格的
+\emph{温度移动}
+\begin{equation}
+T_{\rm obs}=\gfac\,T_{\rm emit},
+\label{eq:Tobs}
+\end{equation}
+而对频率积分后的\emph{玻尔兹曼总强度}满足
+\begin{equation}
+I_{\rm obs}=\gfac^{4}\,I_{\rm emit}.
+\label{eq:I4}
+\end{equation}
+模拟器同时实现式~\eqref{eq:Tobs}（用于配色）与式~\eqref{eq:I4}
+（用于亮度），这正是 Luminet 图像中「一侧亮、一侧暗」的不对称来源：
+$\gfac$ 的极端值在近内边缘可达 $0.4$--$2.2$，$I$ 的四次方使得亮度比
+超过两个数量级。图~\ref{fig:09} 与表~\ref{tab:flux} 给出定量分布。
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{f09_doppler_map}
+\caption{相对论频移。左：$\gfac(r,\psi)$ 在赤道面上的分布（$\psi$ 为盘内的
+方位角），等高线标出 $\gfac=1$；左半平面（朝向观测者一侧）$\gfac>1$，
+右半平面 $\gfac<1$。右：多普勒集束因子 $\gfac^{4}$，其动态范围达
+两个数量级以上，是图像亮度不对称的直接来源。两图均由式~\eqref{eq:g}
+在 $\bin=6M$ 的圆测地线上求值得到。}
+\label{fig:09}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{f10_spectrum_colour}
+\caption{黑体谱与颜色。
+(a) 同一黑体在 $\gfac=0.5,1,2$ 三种频移下的谱型：峰值位移遵循
+$T\to\gfac T$，面积变化遵循 $I\propto\gfac^{4}$。
+(b) 普朗克轨迹在 CIE 1931 $xy$ 色度图上的位置，圆点标出模拟器使用的
+$T_{\rm pk}$ 可调范围（$1500$--$40000$\,K）以及 X 射线预设的解耦色标。
+着色器用三次多项式近似色匹配函数，再由 XYZ 转到线性 sRGB，
+因此盘的颜色在物理上可解释，而非手工挑色。}
+\label{fig:10}
+\end{figure}

@@ -1,0 +1,232 @@
+% !TEX program = xelatex
+% ---------------------------------------------------------------------------
+%  BlackHoleSimulator -- companion paper
+%  Build:  tectonic -X compile paper.tex --outdir .
+% ---------------------------------------------------------------------------
+\documentclass[11pt,a4paper,fontset=windows]{ctexart}
+
+\usepackage[a4paper,top=2.4cm,bottom=2.4cm,left=2.3cm,right=2.3cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{placeins}
+% Long file paths and command lines appear throughout the appendix and the
+% implementation section.  A plain \texttt{} box cannot be broken at all, so a
+% single 40-character path can force an overfull line.  xurl (a thin wrapper
+% around url) makes those tokens breakable while keeping the typewriter face,
+% and \path{} drops out of the hyperref machinery cleanly.  It has to be loaded
+% next to hyperref; both orders work, this one keeps the url machinery first.
+\usepackage{xurl}
+\usepackage[hidelinks,unicode]{hyperref}
+
+\graphicspath{{figures/}{figures/png/}}
+
+\captionsetup{font=small,labelfont=bf,skip=5pt}
+\captionsetup[sub]{font=footnotesize}
+
+% The bibliography uses author-year labels, so every citation is a long
+% unbreakable box (``[Chandrasekhar(1983)]'' and worse).  A line that has to
+% absorb one of those boxes, with the CJK glue around it, can leave the
+% breaker with no feasible break point at the default tolerance, and TeX then
+% emits a badly overfull line.  A small emergency stretch gives the breaker
+% room to loosen a line instead; it is only used when nothing else works.
+\emergencystretch=3em
+
+% -- code listings ----------------------------------------------------------
+\definecolor{cmt}{RGB}{110,120,130}
+\definecolor{kw}{RGB}{150,40,120}
+\definecolor{str}{RGB}{40,110,80}
+\definecolor{bg}{RGB}{248,248,250}
+\lstdefinestyle{glsl}{
+  basicstyle=\ttfamily\scriptsize,
+  backgroundcolor=\color{bg},
+  commentstyle=\color{cmt}\itshape,
+  keywordstyle=\color{kw}\bfseries,
+  stringstyle=\color{str},
+  numbers=left, numberstyle=\tiny\color{cmt}, numbersep=6pt,
+  frame=single, rulecolor=\color{cmt!40}, framesep=4pt,
+  breaklines=true, showstringspaces=false, tabsize=2,
+  columns=fullflexible, keepspaces=true, upquote=true,
+}
+\lstset{style=glsl}
+
+% A float that can carry a listings body plus a Chinese caption.  The
+% listings package does not define a float of its own, and putting the
+% caption inside \lstinputlisting's option list would typeset it in the
+% listing font, where the CJK range has no glyphs.  Defining the float
+% explicitly keeps the caption in the normal caption font.
+\floatstyle{ruled}
+\newfloat{listing}{tbp}{lol}
+\floatname{listing}{代码}
+
+% The Tectonic bundle ships only a subset of listings' language drivers
+% (\texttt{java} is present, \texttt{JavaScript}/\texttt{CSS}/\texttt{GLSL}
+% are not), so the three languages used in this paper are defined here.
+% Keeping them local also makes the build independent of the TeX Live
+% snapshot the reader happens to have installed.
+\lstdefinelanguage{GLSL}{
+  morekeywords={attribute,const,uniform,varying,buffer,layout,centroid,flat,
+    smooth,noperspective,patch,sample,break,continue,do,for,while,switch,
+    case,default,if,else,in,out,inout,float,double,int,uint,void,bool,true,
+    false,discard,return,precision,lowp,mediump,highp,struct,vec2,vec3,vec4,
+    ivec2,ivec3,ivec4,bvec2,bvec3,bvec4,uvec2,uvec3,uvec4,mat2,mat3,mat4,
+    mat2x2,mat2x3,mat2x4,mat3x2,mat3x3,mat3x4,mat4x2,mat4x3,mat4x4,
+    sampler2D,sampler3D,samplerCube,sampler2DArray,isampler2D,usampler2D},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]"
+}
+\lstdefinelanguage{JavaScript}{
+  morekeywords={break,case,catch,class,const,continue,default,delete,do,else,
+    export,extends,finally,for,function,if,import,in,instanceof,let,new,of,
+    return,static,super,switch,this,throw,try,typeof,var,void,while,yield,
+    async,await,true,false,null,undefined},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]',
+  morestring=[b]",
+  morestring=[b]`
+}
+\lstdefinelanguage{CSS}{
+  morekeywords={display,position,flex,grid,width,height,margin,padding,
+    border,background,color,font,opacity,transition,transform,overflow,
+    content,top,left,right,bottom,cursor,pointer,none,absolute,relative,
+    fixed,hidden,auto,block,inline,inherit},
+  sensitive=false,
+  morecomment=[s]{/*}{*/},
+  morestring=[b]',
+  morestring=[b]"
+}
+
+% -- math shorthands --------------------------------------------------------
+\newcommand{\M}{M}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\ie}{\emph{i.e.}}
+\newcommand{\eg}{\emph{e.g.}}
+\newcommand{\rs}{r_{\mathrm s}}
+\newcommand{\bin}{r_{\mathrm{in}}}
+\newcommand{\bout}{r_{\mathrm{out}}}
+\newcommand{\bisco}{r_{\mathrm{ISCO}}}
+\newcommand{\bph}{r_{\mathrm{ph}}}
+\newcommand{\bc}{b_{c}}
+\newcommand{\gfac}{g}
+\newcommand{\lcdm}{\Lambda\text{CDM}}
+\newcommand{\Msun}{M_{\odot}}
+
+\theoremstyle{plain}
+\newtheorem{proposition}{命题}
+\newtheorem{lemma}{引理}
+\theoremstyle{definition}
+\newtheorem{remark}{注记}
+
+\hypersetup{
+  pdftitle={施瓦西黑洞实时成像模拟器：物理建模、数值方法与 GPU 实现},
+  pdfauthor={BlackHoleSimulator Project},
+  pdfsubject={相对论天体物理，数值相对论，实时光线追踪},
+  pdfkeywords={黑洞，施瓦西度规，零测地线，吸积盘，Page-Thorne，WebGL，GPU},
+}
+
+\title{\bfseries 施瓦西黑洞实时成像模拟器\\[6pt]
+\large 物理建模、数值方法、GPU 实现与实验验证}
+\author{BlackHoleSimulator Project\\[2pt]
+\small\ttfamily https://github.com/AaronShawn/blackhole-simulator}
+\date{2026 年 9 月}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+本文给出一个可在普通消费级显卡上实时运行的施瓦西黑洞成像模拟器，并从广义相对论、
+广义相对论辐射转移、数值分析与计算机图形学四个层面给出完整的建模、推导、实现与实验验证。
+模拟器在每一个像素上求解由施瓦西度规导出的零测地线方程
+$\dd^2u/\dd\varphi^2=-u+3\M u^2$（$u\equiv1/r$），采用经典四阶 Runge--Kutta 积分器与
+几何自适应步长，同时输出临界冲击参数 $\bc=3\sqrt3\,\M$、光子球半径 $\bph=3\M$
+与视界阴影角半径的解析对照量。吸积盘采用 Page--Thorne（1974）广义相对论薄盘通量剖面，
+并在运行时与 Shakura--Sunyaev（1973）牛顿近似剖面做定量对照；盘内辐射经过前向累积的
+体积辐射转移、相对论频移 $g$ 与 $I\propto g^{4}$ 集束律、以及基于 CIE 1931 色度轨迹的
+黑体配色后进入 HDR 累积—辉光—ACES 影调映射管线。为保证“物理正确”而非“视觉近似”，
+本文报告了六组独立验证实验（V1--V6），把着色器输出与解析解或双精度 CPU 参考实现逐点比对：
+临界冲击参数相对误差 $1.0\times10^{-14}$；近临界轨道的积分守恒误差在 $tol=3\times10^{-4}$
+处触底于 $2.6\times10^{-6}$；阴影半径的亚像素反解与闭式相符到 $6.5\times10^{-12}$；
+界面内建的实时测量在 $1440\times820$ 下给出 $144.73$\,px 对解析 $144.72$\,px（$+0.009\%$），
+亚像素反解残差 $0.013$\,px 与覆盖率量化带 $1/(2\sqrt2\cdot24)=0.015$\,px 同量级；
+有限逃逸半径造成的出射方向误差不超过 $0.021$\,px。第六组实验针对交互式渐进累积管线：
+修正抖动相位与 8\,bit 量化时序后，$n=1\to1024$ 的参考残差按 $n^{-0.29}$ 下降 $9.0$ 倍，
+同一配置重复渲染逐位相同（修复前 8\,bit 亮度地板约为 $4\times10^{-3}$，即累积在
+量化台阶上失效）。本文还给出一个可复现的性能代价模型
+$T \approx k\,P + c$（$k=6.30\times10^{-4}$\,ms/px，$c=5.2$\,ms，$P$ 为受追踪像素数），
+12 组有效测点残差 RMS 为 $2.37\%$；并对单点耗时在软光栅机器上出现的 $2\times$ 量化台阶
+给出机理性解释。全部插图、表格与数值均由仓库内脚本自动生成，可一键复现。
+
+\vspace{6pt}
+\noindent\textbf{关键词：} 黑洞；施瓦西度规；零测地线；光线追踪；Page--Thorne 薄盘；
+相对论辐射转移；WebGL2；实时渲染；数值验证
+
+\vspace{10pt}
+\begin{center}\rule{0.85\linewidth}{0.4pt}\end{center}
+\vspace{4pt}
+
+\noindent\textbf{Abstract.}\quad
+We present a real-time Schwarzschild black-hole imaging simulator that runs on ordinary
+consumer GPUs, together with a complete account of its general-relativistic modelling,
+numerical analysis, GPU implementation and experimental verification. Every pixel
+integrates the null-geodesic equation $\dd^{2}u/\dd\varphi^{2}=-u+3\M u^{2}$ with $u\equiv1/r$
+using a classical fourth-order Runge--Kutta scheme and a geometric adaptive step size, and
+the renderer exposes the analytic reference quantities $\bc=3\sqrt3\,\M$, $\bph=3\M$ and the
+static-observer shadow angle. The accretion disk uses the Page--Thorne (1974)
+general-relativistic flux profile, switchable at run time against the Shakura--Sunyaev (1973)
+Newtonian profile; disk radiation is processed by front-to-back volumetric radiative
+transfer, the relativistic shift $\gfac$ with the $I\propto\gfac^{4}$ beaming law, and a
+Planck colour computed from the CIE 1931 locus before entering an HDR accumulate--bloom--ACES
+pipeline. Six independent verification experiments (V1--V6) compare shader output against
+analytic solutions or a double-precision CPU reference: the critical impact parameter agrees
+to $1.0\times10^{-14}$, near-critical geodesic conservation bottoms out at $2.6\times10^{-6}$
+at $tol=3\times10^{-4}$, the sub-pixel shadow edge matches the closed form to $6.5\times10^{-12}$,
+the in-app live measurement reports $144.73$\,px against an analytic $144.72$\,px ($+0.009\%$)
+at $1440\times820$ --- a sub-pixel residual of $0.013$\,px, comparable with the coverage
+quantisation band $1/(2\sqrt2\cdot24)=0.015$\,px ---
+and the finite escape radius costs at most $0.021$\,px of exit-direction
+error. The sixth experiment targets the progressive-accumulation pipeline: after fixing the
+jitter phase and the 8-bit quantisation timing, the residual against an $n=2048$ reference
+drops by a factor $9.0$ as $n^{-0.29}$ from $n=1$ to $1024$ and repeated renders are
+bit-identical, whereas before the fix the 8-bit luma floor saturated at about
+$4\times10^{-3}$. We further report a reproducible cost model $T\approx kP+c$ with
+$k=6.30\times10^{-4}$\,ms/px and $c=5.2$\,ms (RMS residual $2.37\%$ over 12 valid points) and
+explain a $2\times$ quantisation step observed on soft-rasterised hardware. All figures,
+tables and numbers are regenerated by scripts shipped in the repository.
+
+\noindent\textbf{Keywords:} black holes; Schwarzschild metric; null geodesics; ray tracing;
+Page--Thorne thin disk; relativistic radiative transfer; WebGL2; real-time rendering;
+numerical verification
+
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+\input{parts/01_intro}
+\input{parts/02_theory}
+\input{parts/03_numerics}
+\input{parts/04_impl}
+\input{parts/05_verify}
+\input{parts/06_results}
+\input{parts/07_discussion}
+\input{parts/08_conclusion}
+\input{parts/10_bib}
+\appendix
+\input{parts/09_appendix}
+
+\end{document}

@@ -1,0 +1,18 @@
+# LaTeX / Tectonic intermediate files
+*.log
+*.aux
+*.blg
+*.bbl
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+paper.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Keep validate_pytrace.json: it is the machine-readable validation record
+# cited by the paper, so it is intentionally tracked.

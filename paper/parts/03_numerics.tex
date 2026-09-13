@@ -1,0 +1,281 @@
+\section{数值方法}\label{sec:numerics}
+
+第~\ref{sec:theory} 节把成像问题化归为一条一维二阶常微分方程
+\eqref{eq:geodesic}。本节说明模拟器如何在 GPU 上以每像素一次的代价把它解到
+可验证的精度：如何从相机参数构造轨道平面的初值（\S\ref{sec:plane}）、
+用什么格式推进（\S\ref{sec:rk4}）、步长如何自适应（\S\ref{sec:stepsize}）、
+何时终止（\S\ref{sec:termination}），以及沿光线如何累积盘辐射
+（\S\ref{sec:rtnum}）。最后 \S\ref{sec:residual} 给出守恒残差的定义与
+后文验证实验的接口。
+
+\subsection{从像素到轨道平面}\label{sec:plane}
+
+\paragraph{观测者标架。}
+相机是施瓦西时空中的一个静态观测者，其坐标位置记为 $\vec r_0$，
+$r_0=|\vec r_0|$，径向单位向量 $\hat e_1=\vec r_0/r_0$。
+按式~\eqref{eq:tetrad}，该观测者的正交归一四元标架把坐标分量与局域
+「实验室」分量联系起来。着色器为每个像素构造一个局域单位方向
+\begin{equation}
+n^{\hat a}_{\rm local}
+=\mathcal N\!\left(\hat e_{\hat a}\cdot
+\bigl(\hat x\,n_x\tan\tfrac{\theta_{\rm fov}}{2}\,A,\;
+\hat y\,n_y\tan\tfrac{\theta_{\rm fov}}{2},\;
+\hat z\bigr)\right),
+\label{eq:nlocal}
+\end{equation}
+其中 $n_x,n_y\in[-1,1]$ 是该像素的归一化设备坐标（NDC），$A$ 为视口宽高比，
+$\theta_{\rm fov}$ 为垂直视场角，$\mathcal N$ 表示归一化。像素抖动
+（\S\ref{sec:jitter}）在 $n_{x,y}$ 上加一个低于一像素的随机偏置，
+使多帧累积后的阴影边缘不出现阶梯状锯齿。
+
+\paragraph{轨道平面。}
+测地线是平面的：由 $\vec r_0$ 与 $n_{\rm local}$ 张成的平面包含整条光线。
+其法向量为
+$\vec c_N=\vec r_0\times n_{\rm local}$，平面内正交基取
+\begin{equation}
+\hat E_1=\frac{\vec r_0}{r_0},\qquad
+\hat E_2=\frac{\vec c_N\times \hat E_1}{|\vec c_N\times\hat E_1|},
+\qquad \text{若 } n_{\rm local}\cdot\hat E_2<0 \text{ 则 } \hat E_2\to-\hat E_2 .
+\label{eq:plane_basis}
+\end{equation}
+最后一步的符号修正是必要的：$\hat E_2$ 的方向由叉乘确定，
+在 $\vec c_N$ 与 $\hat E_1$ 接近共线时会由数值噪声决定，而积分方向
+$\varphi$ 递增必须对应光线的前进方向。有了相位约定后，光线的坐标轨迹
+就是一条平面曲线
+\begin{equation}
+\vec p(\varphi)=\frac{\cos\varphi\,\hat E_1+\sin\varphi\,\hat E_2}{u(\varphi)},
+\qquad u\equiv\frac{1}{r},
+\label{eq:plane_traj}
+\end{equation}
+于是 $\vec p(0)=\vec r_0$ 自动成立，整条测地线由标量函数 $u(\varphi)$ 完全决定。
+这正是把二维光线追踪压缩成一维积分的全部理由。
+
+\paragraph{初值：从局域方向到坐标斜率。}
+设 $a=n_{\rm local}\cdot\hat E_1=\cos\psi$，则
+$\sin\psi=\sqrt{1-a^2}$。局域方向中径向分量与切向分量之比为
+$a:\sin\psi$。径向固有长度为 $\dd \ell_r=\dd r/\sqrt{1-\rs/r}$，
+切向固有长度为 $r\,\dd\varphi$，二者在局域标架中是同一组分量，
+因此在坐标中
+\begin{equation}
+\frac{\dd r}{\dd\varphi}
+=r\sqrt{1-\frac{\rs}{r}}\;\frac{a}{\sin\psi}
+=r_0\sqrt{f_0}\;\frac{a}{\sqrt{1-a^2}},
+\qquad f_0\equiv 1-\frac{\rs}{r_0},
+\label{eq:drdphi}
+\end{equation}
+由 $u=1/r$ 得 $\dd u/\dd\varphi=-u^2\,\dd r/\dd\varphi$，代入 $u_0=1/r_0$：
+\begin{equation}
+u(0)=u_0=\frac{1}{r_0},\qquad
+\left.\frac{\dd u}{\dd\varphi}\right|_{\varphi=0}
+=-u_0\,\frac{a}{\sqrt{1-a^2}}\,\sqrt{f_0}.
+\label{eq:ic}
+\end{equation}
+式~\eqref{eq:ic} 与着色器中
+\texttt{du = -u0 * (a/btan) * fObs} 逐字符对应。
+
+\paragraph{冲击参数作为第一积分。}
+式~\eqref{eq:EL} 的第一积分给出了这条光线的冲击参数
+\begin{equation}
+b=\Bigl[\bigl(\tfrac{\dd u}{\dd\varphi}\bigr)^{2}
++u^{2}\bigl(1-2\M u\bigr)\Bigr]^{-1/2},
+\label{eq:bfromic}
+\end{equation}
+它是一个沿光线严格守恒的量，在着色器中即为 \texttt{G\_B}。
+$b$ 同时是后续多个模块的关键输入：阴影判据 $b\lessgtr \bc$、
+盘辐射的轴向多普勒投影（式~\eqref{eq:baxis}）以及验证实验 V1 的被测量。
+把式~\eqref{eq:ic} 代入式~\eqref{eq:bfromic}，
+\begin{equation}
+b=\frac{r_0\sin\psi}{\sqrt{f_0}},
+\label{eq:b_sinpsi}
+\end{equation}
+即「视线与径向的夹角」到「冲击参数」的解析映射。
+式~\eqref{eq:b_sinpsi} 在 V4 中被用作独立校验：由视线几何反解出的 $b$
+与积分器首步的第一积分必须一致到浮点精度（表~\ref{tab:v4a}）。
+
+\paragraph{退化情形。}
+当 $\sin\psi<10^{-5}$ 时平面 $\vec r_0\wedge n_{\rm local}$ 退化，
+式~\eqref{eq:plane_basis} 中的叉乘失去意义。这类光线的轨迹是一条
+过原点的直线：若 $a<0$（径向向内）必然落入视界，输出纯黑；
+若 $a>0$（径向向外）永不偏折，直接输出背景星场。
+两种情况都在着色器里由解析分支处理，既避免数值爆炸，
+也不会在图像的正中心留下一个数值伪影。
+
+\subsection{四阶 Runge--Kutta 格式}\label{sec:rk4}
+
+把式~\eqref{eq:geodesic} 写成一阶系统
+$\mathbf y=(u,w)^{\mathsf T}$，$w\equiv\dd u/\dd\varphi$：
+\begin{equation}
+\frac{\dd}{\dd\varphi}
+\begin{pmatrix}u\\ w\end{pmatrix}
+=\mathbf f(u,w)=\begin{pmatrix}w\\ -u+3\M u^{2}\end{pmatrix}.
+\label{eq:system}
+\end{equation}
+右端是一个二次多项式，没有奇点、没有超越函数，非常适合在
+着色器里高吞吐求值。模拟器采用经典四阶 Runge--Kutta（RK4）：
+\begin{equation}
+\begin{aligned}
+\mathbf k_1&=\mathbf f(\mathbf y), &
+\mathbf k_2&=\mathbf f(\mathbf y+\tfrac h2\mathbf k_1),\\
+\mathbf k_3&=\mathbf f(\mathbf y+\tfrac h2\mathbf k_2), &
+\mathbf k_4&=\mathbf f(\mathbf y+h\,\mathbf k_3),\\
+\mathbf y_{n+1}&=\mathbf y_n+\frac h6\bigl(\mathbf k_1+2\mathbf k_2+2\mathbf k_3+\mathbf k_4\bigr).
+\end{aligned}
+\label{eq:rk4}
+\end{equation}
+RK4 的局部截断误差为 $\mathcal O(h^5)$、整体为 $\mathcal O(h^4)$。
+选择 RK4 而不是更高阶格式有三个理由：\\
+（一）每条光线平均只走 $10^2$--$10^3$ 步，四阶格式已经把误差压到
+低于单精度浮点的舍入水平（\S\ref{sec:residual}，图~\ref{fig:05}）；
+（二）RK4 每步 4 次右端求值、无历史状态，寄存器压力小，
+是 GPU 上最不容易掉进分支发散与溢出陷阱的格式；
+（三）$u$ 与 $w$ 各自的量级差异大（远场 $u\sim10^{-2}$、近视界 $u\sim0.5$），
+高阶格式（如 Dormand--Prince）的自适应机制在此处收益有限，
+却需要额外的误差估计与更多临时变量。
+
+需要强调的是：积分变量是 $\varphi$ 而不是仿射参数 $\lambda$。以 $\varphi$ 为
+自变量的代价是步长不再度量固有时间，但它带来了两个决定性好处：
+（一）积分区间在平面内是单调的，不会因为 $r$ 的非单调行为在
+近心点附近退化；（二）盘采样所需的水平坐标可以直接由
+式~\eqref{eq:plane_traj} 给出，无需再积分一次位置方程。
+
+\subsection{几何自适应步长}\label{sec:stepsize}
+
+固定步长在施瓦西测地线上效率极低：远场几乎是一维谐振子
+（$u''=-u$，周期 $2\pi$），可以用 $h\sim0.3$ 的大步推进；
+而接近光子球时 $|w|$ 急剧变小、轨道弯曲极快，需要 $h\sim10^{-3}$。
+模拟器采用「限制 $u$ 的相对变化率」的自适应律
+\begin{equation}
+h=\operatorname{clamp}\!\Bigl(\frac{tol\cdot u}{\max(|w|,10^{-7})},\;
+0.002,\;h_{\max}(u)\Bigr)\times\sigma_h,
+\qquad
+h_{\max}(u)=0.35-0.30\,\mathrm{smoothstep}(0,0.30,u),
+\label{eq:hstep}
+\end{equation}
+其中 $tol$ 是用户在界面上可调（默认 $0.03$）的相对容差，
+$\sigma_h$ 是全局步长缩放（默认 $1$），$\mathrm{smoothstep}$ 为
+$3x^2-2x^3$ 型三次平滑过渡。三条判据的作用分别是：
+
+\begin{itemize}\itemsep2pt
+\item \textbf{相对变化率} $h=tol\,u/|w|$：把单步内 $|\Delta u/u|$
+  限制在 $tol$ 量级。远场 $|w|\ll u$，该式给出大步；近心点
+  $|w|\to0$ 时该式发散，因此必须配合上界与下界使用。
+\item \textbf{上界} $h_{\max}(u)$：$u\to0$（远场）时取 $0.35$\,rad，
+  约为谐振子周期的 $5.6\%$，单步相位误差 $\sim10^{-5}$；
+  $u\to0.30$ 以上（$r\lesssim3.3\M$，即光子球附近）平滑收窄到
+  $0.05$\,rad。这个 $-0.30\,\mathrm{smoothstep}$ 的形状来自
+  「误差随 $3\M u$ 增大而增大」的观察，用一个代价极低的表达式
+  替代了完整的误差估计器。
+\item \textbf{下界} $0.002$\,rad：保证在转折点（$w\approx0$）附近
+  步长不会趋近于零而耗尽步数预算。这个下界也是本模拟器
+  最主要的性能瓶颈来源，其代价在 \S\ref{sec:perf} 中用
+  \texttt{diag\_taucap.py} 的对照实验定量给出。
+\end{itemize}
+
+由式~\eqref{eq:hstep} 可以立刻读出一个重要的等价性：把 $h$ 乘上
+$\sigma_h$ 与把 $tol$ 除以 $\sigma_h$ 在 $h$ 未触界时**完全等价**。
+因此在界面性能面板上 $tol$ 与 $\sigma_h$ 并非两个独立旋钮；
+后文表~\ref{tab:perftol} 与图~\ref{fig:22} 用实验证实了这一点
+（$\sigma_h=2$ 与 $tol\to tol/2$ 的耗时落在同一水平），
+这也是我们把 $\sigma_h$ 默认值固定为 $1$ 的原因。
+
+\input{tables/t15_integrator}
+
+\subsection{终止判据与光线分类}\label{sec:termination}
+
+积分循环在五种情形下退出，按出现顺序为：
+
+\begin{enumerate}\itemsep2pt
+\item \textbf{捕获}：$u>0.5$，即 $r<\rs$。此时光线已经越过视界，
+  序参量不再是「是否逃逸」而是「不再有逃逸的可能」，直接输出纯黑。
+\item \textbf{逃逸}：$u<u_{\min}$ 且 $w<0$。$u_{\min}=1/\max(R_{\rm esc},1.6r_0)$，
+  默认 $R_{\rm esc}=140\M$。要求 $w<0$（径向外行）是为了避免把
+  尚未到达最近点、但恰好位于 $R_{\rm esc}$ 之内的外行段误判为逃逸；
+  要求 $R_{\rm esc}\ge1.6r_0$ 则是为了在相机贴近视界时仍留出足够
+  的「远场」余量，使 \S\ref{sec:v5} 的出射方向误差可控。
+\item \textbf{数值无穷远}：$u<10^{-6}$（$r>10^6\M$），兜底退出。
+\item \textbf{步数上限}：迭代计数达到运行期上限 $n_{\max}$
+  （默认 $300$，界面可调 $60$--$900$）。
+\item \textbf{编译期硬上限}：循环体写死 $4096$ 次。
+  这一层保护与用户参数无关，用于防止在极端参数
+  （$tol$ 极小、$\sigma_h$ 极小、$n_{\max}$ 极大）下
+  单条病态光线挂死 GPU 触发 TDR。
+\end{enumerate}
+
+命中第 4 或第 5 条的光线按「未逃逸」处理：若此时 $u<0.5$，
+它仍会把剩余透射率乘上背景星场（式~\eqref{eq:escapedir}），
+因此截断表现为星场亮度与方向的微小误差，而不是伪影。
+\S\ref{sec:perf} 表明：在默认参数下绝大多数像素远未逼近 $n_{\max}$，
+$n_{\max}$ 从 $300$ 提高到 $1200$ 几乎不改变耗时（表~\ref{tab:perfsteps}），
+这反过来印证了步长控制而非步数上限才是真正决定成本的因素。
+
+\subsection{盘的体积辐射转移积分}\label{sec:rtnum}
+
+盘不是几何薄面，而是光学厚度有限的体积发射体：密度在竖直方向为高斯
+$\rho\propto\exp(-\tfrac12 y^2/H^2)$，$H=\mathcal H r$，
+$\mathcal H$ 即界面上的 \texttt{diskThick}（默认 $0.075$）。
+沿一条几何步长对应的线段 $[\vec p_1,\vec p_2]$ 上，
+模拟器按前向（front-to-back）格式累积：
+\begin{equation}
+\dd\tau=\min\!\bigl(\kappa\rho\,\overline{w}_y\,\Delta \ell,\;6\bigr),
+\qquad
+\vec C \mathrel{+}= T\,(1-e^{-\dd\tau})\,\vec S,\qquad
+T \mathrel{\times}= e^{-\dd\tau},
+\label{eq:front2back}
+\end{equation}
+其中 $\Delta\ell=|\vec p_2-\vec p_1|$ 为线段长度，$\vec S$ 为
+式~\eqref{eq:Tobs}--\eqref{eq:I4} 所定义的发射函数，$\overline{w}_y$ 为该段上竖直
+高斯剖面的平均
+\begin{equation}
+\overline{w}_y=
+\frac{1}{\Delta y}\int_{y_1}^{y_2}
+\exp\!\Bigl(-\frac{y^2}{2H^2}\Bigr)\dd y
+=\frac{1}{\Delta y}\sqrt{\frac{\pi}{2}}\,H\,
+\Bigl[\mathrm{erf}\bigl(\tfrac{y_2}{H\sqrt2}\bigr)
+-\mathrm{erf}\bigl(\tfrac{y_1}{H\sqrt2}\bigr)\Bigr],
+\label{eq:avgw}
+\end{equation}
+$\Delta y\to0$ 时退化为 $\exp(-\tfrac12y^2/H^2)$。式~\eqref{eq:avgw}
+把「穿过高斯壳层」的柱密度解析地积掉，因此即使一个几何步长横跨
+整个薄盘，光学厚度仍然是准确的，不需要把 $h$ 缩到 $H$ 以下。
+这一点对效率至关重要：默认 $H/R=0.075$、$r\sim10\M$ 时 $H\sim0.75\M$，
+而远场步长对应的弧长可达几个 $M$。
+
+$\mathrm{erf}$ 用 Abramowitz--Stegun 7.1.26 的有理逼近
+（绝对误差 $<1.5\times10^{-7}$），在单精度下与精确值不可区分。
+近盘区域（线段两端点中较近者落在 $7H$ 内、且半径位于
+$[0.85\,\bin,1.3\,\bout]$）启用 $K=5$ 的等分子步，
+把一段几何步长切成五份分别求值，使发射的空间变化被正确采样；
+盘外区域则取 $K=1$，不做无用的细分。
+当透射率 $T<0.002$ 时停止采样盘——光学厚之后继续积分只会
+增加成本而不再改变像素值。
+
+\subsection{守恒残差与收敛判据}\label{sec:residual}
+
+式~\eqref{eq:orbit1} 的第一积分在解析解中严格守恒。数值解中定义残差
+\begin{equation}
+\mathcal R(\varphi)
+=b^{-1}\Bigl[\bigl(\tfrac{\dd u}{\dd\varphi}\bigr)^{2}
++u^{2}(1-2\M u)\Bigr]^{1/2}-1,
+\label{eq:resid}
+\end{equation}
+它以相对形式度量「这条数值曲线偏离真实零测地线多远」，
+且对尺度不敏感。$\mathcal R$ 是后文最主要的内部一致性指标：
+V2 在近临界轨道上报告它的最大值与平均值（表~\ref{tab:v2}），
+图~\ref{fig:05} 则给出 $\max|\mathcal R|$ 随步数的收敛曲线。
+
+残差有两条下界，读者在解读时需要注意：其一，着色器使用单精度
+浮点（\texttt{highp float}，24 位尾数，机器精度 $\approx6\times10^{-8}$），
+$\mathcal R$ 不可能长期低于该量级；其二，近临界轨道绕光子球多圈后
+（V2 的测试光线绕行 $15$\,rad 以上）局部 Lyapunov 放大使得
+初值的舍入噪声被指数放大，残差会在某一步「抬起」到
+$10^{-6}$ 量级并保持。这正是表~\ref{tab:v2} 中残差随 $tol$ 收紧而下降
+约两个数量级、随后在 $tol=3\times10^{-4}$ 触底的原因；
+它反映的是浮点精度的极限，而不是积分格式的失误。
+
+最后指出一处与图像质量直接相关的数值性质：式~\eqref{eq:hstep} 的
+下界 $0.002$ 使得近光子球光线的步长不再由 $tol$ 决定，
+而是固定为 $0.002\,\sigma_h$。这类光线在屏幕上恰好是阴影边缘
+附近的少数像素，因此「阴影边缘的锐利度」几乎与 $tol$ 无关，
+而「阴影边缘的位置」由式~\eqref{eq:bfromic} 的守恒律保证。
+两者合起来解释了图~\ref{fig:17}(b) 中阴影半径随 $tol$ 迅速收敛而
+图~\ref{fig:22}(c) 中总耗时仍随 $tol$ 显著变化的表观矛盾。

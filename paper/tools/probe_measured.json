@@ -1,0 +1,52 @@
+{
+  "note": "Produced by paper/tools/measure_probe.py; each row is one window.__bh.measure() call in the shipped app.",
+  "samples": 24,
+  "sigmaPx": 0.014731391274719738,
+  "rows": [
+    {
+      "label": "docked",
+      "width": 1440,
+      "height": 820,
+      "measured": 144.72916666666669,
+      "analytic": 144.71600471633818,
+      "rel": 0.00909502052264953,
+      "sigmaPx": 0.014731391274719738,
+      "samples": 24,
+      "subpixel": true,
+      "lo": 575,
+      "hi": 864,
+      "edgeL": 575.25,
+      "edgeR": 864.7083333333334
+    },
+    {
+      "label": "default",
+      "width": 1600,
+      "height": 900,
+      "measured": 158.79166666666669,
+      "analytic": 158.83463932281018,
+      "rel": -0.02705496504207389,
+      "sigmaPx": 0.014731391274719738,
+      "samples": 24,
+      "subpixel": true,
+      "lo": 641,
+      "hi": 958,
+      "edgeL": 641.1666666666666,
+      "edgeR": 958.75
+    },
+    {
+      "label": "paper",
+      "width": 1000,
+      "height": 600,
+      "measured": 105.85416666666669,
+      "analytic": 105.88975954854011,
+      "rel": -0.03361314826398407,
+      "sigmaPx": 0.014731391274719738,
+      "samples": 24,
+      "subpixel": true,
+      "lo": 394,
+      "hi": 605,
+      "edgeL": 394.25,
+      "edgeR": 605.9583333333334
+    }
+  ]
+}

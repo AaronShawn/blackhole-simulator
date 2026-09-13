@@ -1,0 +1,493 @@
+% ===========================================================================
+%  09_appendix.tex -- 复现、符号索引、代码片段与补充图表
+%  由 paper.tex 的 \appendix 之后 \input，节号自动变成 A、B、...
+% ===========================================================================
+\section{复现、符号索引与补充材料}\label{app:repro}
+
+本附录的存在理由只有一条：本文正文里的\emph{每一个数字}都应该能被读者
+在自己的机器上重新算出来，而且算出来的方式不应该依赖任何未公开的步骤。
+因此这里给出四类材料——（A.1）全文记号索引，使公式与代码之间的对应关系
+没有歧义；（A.2）完整的复现命令清单与产物矩阵，指明每一张图、每一张表
+由哪一条命令、读取哪一个中间文件生成；（A.3）着色器关键代码片段，
+它们由脚本从 \texttt{web/src/shaders.js} 中\emph{切片}得到，而不是手工
+抄写，因此正文引用的代码与仓库中的真实代码不会漂移；
+（A.4）正文引用但未在正文排版的完整数据表（表~\ref{tab:perftol}，
+即正文第~\ref{sec:perf} 节与第~\ref{sec:discuss-perf} 节
+八处引用的容差扫描全表）。
+最后的（A.5）汇总九张补充插图：它们不是装饰，而是正文若干论证的
+\emph{图形证明}，涉及相空间结构、逃逸半径截断、盘效率求和规则、
+体积辐射转移、像阶分类、源方向映射与程序界面标注。
+
+本附录中的所有插图与表格都由仓库内脚本生成，且所有脚本都是纯
+\texttt{numpy}/\texttt{matplotlib} 代码，不含任何交互式步骤；
+不联网、不依赖 GPU（唯一的例外是 A.2 中三条经由无头浏览器驱动真实
+渲染器的命令，它们需要本机装有 Edge/Chromium）。
+
+% --------------------------------------------------------------------------- %
+\subsection{符号与记号索引}\label{app:notation}
+
+表~\ref{tab:v1} 到表~\ref{tab:r0scan} 的 $18$ 张表构成正文的数据表序列；
+下面这张\emph{符号索引}是辅助材料，以无编号标题排版，不计入该序列。
+记号按“几何量 $\to$ 辐射量 $\to$ 数值量 $\to$ 统计量”的顺序排列，
+并在第三列给出它在正文中的定义式或首次出现位置，以便读者在
+公式与代码之间来回对照时不必反复翻页。
+
+\begingroup
+\setlength{\LTpre}{4pt}
+\setlength{\LTpost}{4pt}
+\small
+\begin{longtable}{@{}p{2.15cm}p{5.05cm}p{7.05cm}@{}}
+\multicolumn{3}{c}{\textbf{符号索引（辅助材料，不计入正文表号）}}\\[3pt]
+\toprule
+\textbf{记号} & \textbf{含义} & \textbf{定义式 / 说明}\\
+\midrule
+\endfirsthead
+\multicolumn{3}{c}{\small\itshape 符号索引（续）}\\[3pt]
+\toprule
+\textbf{记号} & \textbf{含义} & \textbf{定义式 / 说明}\\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+$M$ & 黑洞质量（几何单位 $G=c=1$） & 全文使用 $G=c=1$，故 $[M]=$ 长度；式~\eqref{eq:schw}。\\
+$\rs$ & 施瓦西半径（事件视界） & $\rs = 2M$；式~\eqref{eq:schw}。\\
+$r_0$ & 观测者径向坐标 & 静态观测者位于 $(r_0,\theta_0)$；式~\eqref{eq:fido}。\\
+$r$ & 沿光线的径向坐标 & 极坐标 $(r,\varphi)$ 中积分变量之一。\\
+$u$ & 径向坐标的倒数 & $u \equiv 1/r$；测地线方程以 $u(\varphi)$ 为未知函数，式~\eqref{eq:geodesic}。\\
+$\varphi$ & 轨道平面内的方位角 & 光线在自身轨道平面内的转过的角度；测地线方程的自变量。\\
+$b$ & 冲击参数 & $b \equiv L/E$，$E$、$L$ 分别为光子能量与角动量；式~\eqref{eq:impact}。\\
+$\bc$ & 临界冲击参数 & $\bc = 3\sqrt3\,M$；分离“逃逸”与“被捕获”的分界，式~\eqref{eq:bc}。\\
+$\bph$ & 光子球半径 & $\bph = 3M$，$u=1/3M$ 处的不稳定圆轨道；式~\eqref{eq:photonsphere}。\\
+$\bisco$ & 最内稳定圆轨道半径 & $\bisco = 6M$（盘内边界默认值）；式~\eqref{eq:isco}。\\
+$\psi$ & 自观测者指向阴影边界的角半径 & 由 $\sin\psi = \bc\sqrt{1-\rs/r_0}/r_0$ 给出；式~\eqref{eq:shangle}。\\
+$\psi_{\rm sh}$ & 阴影的角半径（闭式） & 上式在 $r_0=26M$ 时 $\psi_{\rm sh}=11.0702^\circ$；表~\ref{tab:v3}。\\
+$\theta_{\rm fov}$ & 相机垂直视场角 & 默认 $58^\circ$；式~\eqref{eq:shadowpx}。\\
+$f_{\rm px}$ & 以像素为单位的焦距 & $f_{\rm px} = H/(2\tan(\theta_{\rm fov}/2))$；式~\eqref{eq:shadowpx}。\\
+$R_{\rm px}$ & 阴影半径的像素值（解析） & 由 $\psi_{\rm sh}$ 与 $f_{\rm px}$ 换算；式~\eqref{eq:shadowpx}。\\
+$N_{\rm pix}$ & 单帧受追踪像素数 & $N_{\rm pix} = s^2 W H$，$s$ 为 \texttt{renderScale}；式~\eqref{eq:costpix}。\\
+$k,\;c$ & 像素线性律的斜率与截距 & $T \approx k\,N_{\rm pix} + c$，$k=6.30\times10^{-4}$\,ms/px，$c=5.2$\,ms；表~\ref{tab:perfsteps}。\\
+$tol$ & 自适应步长容差 & 步长由 $h \propto tol\,u/|\dd u/\dd\varphi|$ 控制；式~\eqref{eq:hstep}。\\
+$n_{\max}$ & 单条光线的最大积分步数 & 默认 $4096$，为成本上界保护；第~\ref{sec:perf} 节。\\
+$p$ & 步数对容差的幂律指数 & $(T-c)/N_{\rm pix}\propto tol^{-p}$，实测 $p=0.912$；表~\ref{tab:perftol}。\\
+$R_{\rm esc}$ & 有限逃逸半径 & 光线在 $u<1/R_{\rm esc}$ 处终止，默认 $140M$；式~\eqref{eq:remdef}。\\
+$\gfac$ & 相对论频移因子 & $\gfac \equiv \nu_{\rm obs}/\nu_{\rm em}$；式~\eqref{eq:g}。\\
+$\Omega$ & 盘物质的开普勒角速度 & $\Omega = r^{-3/2}M^{1/2}$；式~\eqref{eq:circular}。\\
+$H/r$ & 盘的几何厚度比 & 垂直高斯分布的标准差与半径之比；第~\ref{sec:rtnum} 节。\\
+$\eta$ & 辐射效率 & $\eta \equiv P_{\rm rad}/\dot M c^2$；Page--Thorne 盘为 $5.72\%$；第~\ref{sec:ntverify} 节。\\
+$\tau$ & 光学深度 & $\dd\tau = \kappa\rho\,\dd l$，前向累积按 $1-e^{-\tau}$ 处理；式~\eqref{eq:front2back}。\\
+$\delta_X$ & 与临界曲线的无量纲距离 & $\delta_X = |b-\bc|/\bc$，用于近临界的对数窄带；第~\ref{sec:criticalband} 节。\\
+$\kappa$ & 绕行相位的发散标度 & $b\to\bc^+$ 时 $\Delta\varphi \sim -2\ln\kappa + \mathrm{const}$；式~\eqref{eq:slopekappa}。\\
+$i$ & 盘相对视线的倾角 & $i=0^\circ$ 为正面（face-on），$90^\circ$ 为侧视；第~\ref{sec:orders} 节。\\
+$n_{\rm cross}$ & 光线穿过盘赤道面的次数 & 即该像素所见像的阶次；第~\ref{sec:orders} 节、图~\ref{fig:12}。\\
+$\sigma_{\rm px}$ & 亚像素反解的 $1\sigma$ 量化带 & $\sigma_{\rm px} = 1/(2\sqrt2\cdot24) = 0.0147$\,px；式~\eqref{eq:subpix}。\\
+$\varepsilon_{\rm px}$ & 角度分辨率（像素当量） & $\varepsilon_{\rm px} = 592.72\,\varepsilon_{\rm rad}$；第~\ref{sec:discuss-quant} 节。\\
+$\rho$ & 预算参数 & $\rho = \beta/tol$，$\beta$ 为步长倍率；第~\ref{sec:perf} 节。\\
+\end{longtable}
+\endgroup
+
+% --------------------------------------------------------------------------- %
+\subsection{完整复现命令清单}\label{app:commands}
+
+\paragraph{环境。}
+所有命令都在仓库根目录（便携包解压后的顶层文件夹）下执行。
+需要的环境有三类：
+
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt,topsep=3pt]
+  \item \textbf{Python 3.11}，以及 \texttt{numpy}、\texttt{matplotlib}、
+        \texttt{pillow}、\texttt{playwright}（后两者分别用于界面截图与
+        无头浏览器驱动）。仓库的 \texttt{requirements-dev.txt} 列出了
+        开发与复现所需的全部依赖：\texttt{pip install -r requirements-dev.txt}。
+        论文绘图额外需要 \texttt{numpy} 与 \texttt{matplotlib}。
+  \item \textbf{\TeX{} 引擎}。本文使用 \texttt{ctexart} +
+        \texttt{fontset=windows}，因此需要能做中文排版并自动抓取宏包的
+        \textbf{Tectonic}（单文件、自带宏包缓存）或本地 \texttt{xelatex}。
+        仓库不携带引擎本体，只记录编译命令；PDF 编译不需要联网
+        （首次运行 Tectonic 会拉取一次宏包，之后离线可编译）。
+  \item \textbf{无头浏览器}（仅 \texttt{measure\_probe.py} 与
+        \texttt{make\_render\_figures.py} 需要）：本机安装的
+        Edge/Chromium 即可，脚本不下载浏览器。
+\end{itemize}
+
+\paragraph{计算阶段（不渲染画面，全部为 CPU 数值计算）。}
+下面三条命令生成论文所有\textbf{初级数据}：
+
+\begin{quote}\ttfamily\small
+python paper/tools/validate\_pytrace.py \hfill\emph{(V1--V5 的双精度参照)}\\
+python paper/tools/validate\_accum.py \hfill\emph{(V6：累积管线的收敛与可重复性)}\\
+python paper/tools/winding\_divergence.py \hfill\emph{(近临界缠绕的发散斜率)}
+\end{quote}
+
+\noindent 产物分别是 \path{paper/tools/validate_pytrace.json}、
+\path{validate_accum.json} 与 \path{winding_divergence.json}。
+其中 \path{validate_pytrace.py} 用双精度 RK4 复算解析闭式，
+是判定着色器输出是否存在结构性偏差的\textbf{唯一}基准；
+它同时写出 \path{validate_pytrace.json} 作为机器可读的验证记录。
+
+\paragraph{实测阶段（驱动真实渲染器）。}
+\begin{quote}\ttfamily\small
+python paper/tools/measure\_probe.py \hfill\emph{(V3 工程层：界面内建探针)}\\
+python paper/tools/make\_render\_figures.py --only f22 \hfill\emph{(性能基准记录)}\\
+python paper/tools/make\_render\_figures.py --only f19 f20 f21 f23 \hfill\emph{(界面与画廊截图)}
+\end{quote}
+
+\noindent 这三条命令会启动本地服务并驱动无头浏览器把真实着色器跑起来；
+它们同时写出 \path{probe_measured.json}（三视口探针回读值）、
+\path{r0_scan.json}（跨 $r_0$ 的残差扫描）与
+\path{render_benchmark.json}（逐配置的多轮计时）。
+\path{r0_scan.json} 由 \path{make_render_figures.py} 的
+扫描子命令产生，其数值直接进入表~\ref{tab:r0scan} 与图~\ref{fig:03} 的右面板。
+
+\paragraph{派生阶段（把初级数据变成论文里的数字）。}
+\begin{quote}\ttfamily\small
+python paper/tools/derive\_perf.py \hfill\emph{(拟合三条标度律)}\\
+python paper/tools/make\_tables.py \hfill\emph{(18 张数据表)}\\
+python paper/tools/make\_figures.py \hfill\emph{(插图 1--13)}\\
+python paper/tools/make\_figures2.py \hfill\emph{(插图 14--18、24)}\\
+python paper/tools/make\_render\_figures.py --only f19 f20 f21 f23 \hfill\emph{(插图 19--21、23)}\\
+python paper/tools/make\_render\_figures.py --only f22 --reuse-bench \hfill\emph{(插图 22)}\\
+python paper/tools/extract\_snippets.py \hfill\emph{(附录 A.4 的 GLSL 切片)}
+\end{quote}
+
+\noindent \texttt{derive\_perf.py} 只依赖 \texttt{render\_benchmark.json}，
+输出 \texttt{perf\_derived.json}：像素线性律的 $k$、$c$、
+容差幂律的 $p$、以及三段模型的残差向量。
+\texttt{make\_tables.py} 是\textbf{唯一}写 \texttt{paper/tables/*.tex} 的脚本，
+它把上面所有 JSON 转成 \LaTeX{} 表格；因此正文表格里的数字不可能
+“手工改错”，只会与 JSON 同步变化。所有绘图脚本共用
+\texttt{figstyle.py}，它同时写出矢量
+\texttt{figures/<name>.pdf} 与 200\,dpi 位图
+\texttt{figures/png/<name>.png}，正文只引用矢量版。
+
+\paragraph{编译。}
+\begin{quote}\ttfamily\small
+cd paper\\
+..\textbackslash work\textbackslash tools\textbackslash tectonic\textbackslash tectonic.exe -X compile paper.tex --outdir .\\
+\emph{(或：xelatex paper.tex 连续三次，以解析交叉引用与目录)}
+\end{quote}
+
+\noindent 产出 \texttt{paper/paper.pdf}。因为参考文献是手工
+\texttt{thebibliography} 环境（\texttt{parts/10\_bib.tex}），
+\textbf{不需要}运行 BibTeX/Biber，也不需要 \texttt{.bib} 文件。
+
+\paragraph{程序自检（与论文 V1--V6 同源）。}
+\begin{quote}\ttfamily\small
+python -u tools/verify.py --width 1600 --height 900 --shots work/screens/v104\\
+python tools/ui\_check.py
+\end{quote}
+
+\noindent \texttt{tools/verify.py} 启动便携启动器、逐项读取界面上的物理读数
+（阴影半径、GPU 名称、缓冲尺寸、FPS）、保存多视口截图并断言
+黑洞阴影圆心在三种侧栏状态下的像素偏移为 $0$；
+\texttt{tools/ui\_check.py} 校验 DOM 结构（预设、滑杆、诊断条、
+侧栏收起按钮）是否完整。
+
+\paragraph{产物矩阵。}
+下表把“图/表 $\to$ 脚本 $\to$ 输入”的对应关系一次列全，便于按需只重算一项。
+该矩阵同样是辅助材料，不计入正文表号。
+
+\begingroup
+\setlength{\LTpre}{4pt}
+\setlength{\LTpost}{4pt}
+\footnotesize
+\begin{longtable}{@{}p{3.35cm}p{4.95cm}p{6.0cm}@{}}
+\multicolumn{3}{c}{\textbf{产物矩阵（辅助材料，不计入正文表号）}}\\[3pt]
+\toprule
+\textbf{产物} & \textbf{生成脚本} & \textbf{输入 / 备注}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{产物} & \textbf{生成脚本} & \textbf{输入 / 备注}\\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+图~\ref{fig:01}--\ref{fig:13} & \texttt{make\_figures.py} & \texttt{validate\_pytrace.json}、\texttt{audit\_nt.json}；纯解析/双精度绘图，无需浏览器。\\
+图~\ref{fig:14}--\ref{fig:18}、\ref{fig:24} & \texttt{make\_figures2.py} & \texttt{validate\_pytrace.json}、\texttt{validate\_accum.json}。\\
+图~\ref{fig:19}--\ref{fig:21}、\ref{fig:23} & \texttt{make\_render\_figures.py} & 无头浏览器 + 真实着色器；界面截图即程序运行结果本身。\\
+图~\ref{fig:22} & \texttt{make\_render\_figures.py} & \texttt{render\_benchmark.json}（36 组、每组 $n=7$ 的中位数）。\\
+图~\ref{fig:25} & \texttt{winding\_divergence.py} & 该脚本自带双精度积分，直接输出 \texttt{winding\_divergence.json}。\\
+表~\ref{tab:v1}--\ref{tab:v6summary} & \texttt{make\_tables.py} & \texttt{validate\_pytrace.json}。\\
+表~\ref{tab:bcheck}--\ref{tab:cumulative} & \texttt{make\_tables.py} & \texttt{validate\_pytrace.json}、\texttt{audit\_nt.json}。\\
+表~\ref{tab:perfsteps} & \texttt{make\_tables.py} & \texttt{render\_benchmark.json}。\\
+表~\ref{tab:perftol} & \texttt{make\_tables.py} & \texttt{render\_benchmark.json}（本附录 A.5 排版全表）。\\
+表~\ref{tab:defaults}、\ref{tab:presets} & \texttt{make\_tables.py} & \texttt{web/src/main.js} 的默认值与预设表。\\
+表~\ref{tab:integrator} & \texttt{make\_tables.py} & \texttt{validate\_pytrace.json}（四阶收敛的逐级测点）。\\
+表~\ref{tab:r0scan}、\ref{tab:v3b} & \texttt{make\_tables.py} & \texttt{r0\_scan.json}、\texttt{probe\_measured.json}。\\
+附录 A.4 的 GLSL 片段 & \texttt{extract\_snippets.py} & 从 \texttt{web/src/shaders.js} 按行区间切片，带内容守卫。\\
+\end{longtable}
+\endgroup
+
+% --------------------------------------------------------------------------- %
+\subsection{仓库结构与文件职责}\label{app:files}
+
+便携包解压后的顶层文件夹同时也是 git 仓库的工作区，结构如下
+（\texttt{work/} 是本地暂存区，不入库）：
+
+\begin{itemize}[leftmargin=1.6em,itemsep=2.5pt,topsep=3pt]
+  \item \texttt{BlackHoleSimulator.exe} —— 双击入口（用户唯一需要看见的文件）。
+        它是一个 \texttt{pyinstaller} 打包的启动器，内部只做三件事：
+        在 \texttt{127.0.0.1} 上起一个只监听本机的静态服务器、
+        打开 WebView2（Edge Chromium）原生窗口、在
+        \texttt{file://} 与 \texttt{http://} 之间选择正确的加载方式。
+        窗口本身走 D3D11/ANGLE 硬件加速，因此 NVIDIA GPU 被直接驱动。
+  \item \texttt{web/index.html}、\texttt{web/style.css} —— 页面骨架与
+        控制面板样式。面板的开合只改变 \texttt{flex-basis} 与
+        画布的 \texttt{clientWidth}，渲染尺寸由 \texttt{ResizeObserver}
+        独立更新，因而不存在“侧栏一开构图就偏”的耦合。
+  \item \texttt{web/src/main.js} —— 渲染循环、参数系统、预设、累积器、
+        OrbitControls 接线、以及界面内建的阴影半径探针
+        （\texttt{measureShadow()} 的亚像素反解就写在这里）。
+  \item \texttt{web/src/shaders.js} —— 全部 GLSL：测地线 ODE 与 RK4、
+        自适应步长、盘发射与频移、前向累积辐射转移、
+        黑体配色的普朗克轨迹近似、抖动序列、泛光与 ACES 影调映射。
+        附录 A.4 的四个片段全部来自这个文件。
+  \item \texttt{web/vendor/} —— 随包携带的 \texttt{three.module.js}、
+        \texttt{three.core.js} 与 \texttt{OrbitControls.js}，
+        因此程序\textbf{离线可用}，不依赖 CDN。
+  \item \texttt{paper/paper.tex}、\texttt{paper/parts/} —— 本文的
+        \LaTeX{} 源；章节按“物理 $\to$ 数值 $\to$ 实现 $\to$ 验证 $\to$
+        结果 $\to$ 讨论 $\to$ 结论 $\to$ 附录（本文件）”排列。
+  \item \texttt{paper/tools/} —— 全部计算、绘图与制表脚本，
+        以及它们读写的 JSON 记录。这是论文可复现性的物质基础。
+  \item \texttt{paper/figures/}、\texttt{paper/figures/png/} ——
+        矢量与位图两套插图（前者供投稿，后者供 README 与快速浏览）。
+  \item \texttt{paper/tables/} —— $18$ 个 \texttt{.tex} 数据表，
+        由 \texttt{make\_tables.py} 生成，文件头带
+        “generated by \dots\ do not edit”标记。
+  \item \texttt{tools/verify.py}、\texttt{tools/ui\_check.py} ——
+        程序侧的自检；\texttt{tools/push\_via\_api.py} 用于在无
+        \texttt{git} 凭据的环境下推送（凭据只从环境变量读取，
+        绝不写入仓库）。
+  \item \texttt{docs/*.webp} —— README 使用的优化截图，
+        由 \texttt{tools/verify.py} 的 PNG 输出转码而来。
+  \item \texttt{build\_portable.ps1}、\texttt{一键发布.bat} ——
+        便携包构建与发布脚本；\texttt{CITATION.cff} 提供机器可读引用元数据。
+\end{itemize}
+
+% --------------------------------------------------------------------------- %
+\subsection{着色器关键代码片段}\label{app:code}
+
+下面四段代码由 \texttt{paper/tools/extract\_snippets.py} 从
+\texttt{web/src/shaders.js} 中\textbf{按行区间切片}得到，
+并且每段都带一个\emph{内容守卫}：切片的第 1 行与最后一行必须包含
+指定的子串，否则脚本以非零状态退出。这样做是为了让附录引用的代码
+在着色器被重新格式化后\emph{大声失败}，而不是悄悄引用到错误的代码块。
+
+\begin{listing}[t]
+\caption{Schwarzschild 零测地线方程与其 RK4 步进。状态向量为 $s=(u,\dd u/\dd\varphi)$，导数 $\dd s/\dd\varphi = (\dd u/\dd\varphi,\;-u+3\M u^2)$，即式~\eqref{eq:geodesic} 的一阶化形式。三段 \texttt{geoDeriv} 调用对应 RK4 的四个一级导数，权重 $1/6,1/3,1/3,1/6$。这段代码在每个像素上执行，是整条渲染管线的物理核心。}
+\label{lst:apx-ode}
+\lstinputlisting{code/geodesic_ode.glsl}
+\end{listing}
+
+\begin{listing}[t]
+\caption{亚像素抖动与累积采样位置。像素内的采样点由 Cranley--Patterson 旋转的 $R_2$ 低差异序列给出：旋转量对每个像素是常量（因此固定采样序号下捕获结果逐位可重复），而采样序号按黄金比例型向量推进，使样本在像素内分层而非像独立均匀噪声那样成团。这就是第~\ref{sec:v6} 节中“先修复抖动相位、再修复 8\,bit 量化时序”之后残差按 $n^{-0.29}$ 下降的直接来源。}
+\label{lst:apx-jitter}
+\lstinputlisting{code/subpixel_jitter.glsl}
+\end{listing}
+
+\begin{listing}[t]
+\caption{吸积盘发射函数的\textbf{第一段}：Page--Thorne 通量的闭式实现。式~\eqref{eq:pt} 的扭矩积分 $B(r)$ 含 $\ln$ 型对数与 $\sqrt{r}$ 因子，代码中按 $s=\sqrt{r}$、$s_i=\sqrt{r_{\rm in}}$ 重写以避免重复开方；$u_{\rm red} = \max(1-3M/r,\,10^{-4})$ 是式~\eqref{eq:redshift} 的 $(E-\Omega L)^2 = 1-3M/r$ 的显式形式（对开普勒圆轨道成立），同时充当近 ISCO 处的下限保护。峰值归一化在 $r = 1.5918\,r_{\rm in}$（代码中的常数即该根），因此 \texttt{diskFluxPT} 返回的是 $F/F_{\rm peak}\in[0,1]$ 的无量纲剖面，与 Shakura--Sunyaev 模型共享同一条调用路径。}
+\label{lst:apx-disk}
+\lstinputlisting[firstline=1,lastline=26]{code/disk_source.glsl}
+\end{listing}
+
+\begin{listing}[t]
+\caption{吸积盘发射函数的\textbf{第二段}（续代码~\ref{lst:apx-disk}）：相对论频移与黑体配色。$\gfac$ 由 $u^t$ 与多普勒项组装：$u^t = 1/\sqrt{1-3M/r}$ 对应开普勒圆轨道发射体，$u^t = 1/\sqrt{1-2M/r}$ 对应静态发射体，两者由界面开关切换；$1+\Omega b_{\rm axis}$ 中的 $b_{\rm axis} = (L\cdot\hat{y})/E$ 取的是光子角动量\emph{在盘自转轴上的投影}，而不是 $|L|/E$——这正是光线追踪方向（相机 $\to$ 天空）与真实光子传播方向相反时必须结算的符号。末行按 $I_{\rm obs} = \gfac^{4} I_{\rm emit}$ 集束后与 Planck 轨迹配色相乘。}
+\label{lst:apx-disk-b}
+\lstinputlisting[firstline=27]{code/disk_source.glsl}
+\end{listing}
+
+\begin{listing}[t]
+\caption{主积分循环的\textbf{第一段}：终止判据与自适应步长。循环上限 4096 即 $n_{\max}$；三条 \texttt{break} 分别对应捕获（$r<r_s$）、逃逸到无穷远（$u<u_{\min}$ 且仍在向外）与步数耗尽。步长按式~\eqref{eq:hstep} 的 $h = tol\,u/|\dd u|$ 取，再乘恒定的 $uStepScale$ 并夹在 $[0.002,\,h_{\max}]$ 内；注意 $h_{\max}$ 随 $u$ 的 \texttt{smoothstep} 放宽到 $0.35$——这不是精度妥协，而是因为在 $u\to0$ 的远场 ODE 已趋近平直空间的谐振子，误差控制量 $u/|\dd u|$ 本身已经足够保守。末四行把 RK4 的输出 $s=(u',\dd u')$ 重新装配成轨道平面内的两个三维端点 $\mathbf{p}_{1},\mathbf{p}_{2}$，供下游的盘积分使用。}
+\label{lst:apx-rt}
+\lstinputlisting[firstline=1,lastline=19]{code/radiative_transfer.glsl}
+\end{listing}
+
+\begin{listing}[t]
+\caption{主积分循环的\textbf{第二段}（续代码~\ref{lst:apx-rt}）：盘-步相交判据与步内高斯平均。$\texttt{nearDisk}$ 是一个保守的三重包围测试（竖直薄层的 $7H$ 带、内外半径的展宽边界），只有命中时才把步切成 $K=5$ 段；这是自适应性最廉价的形式——几何上不可能相交的步不做任何额外工作。切分后的每一段用 \texttt{erfApprox} 的\emph{差商}解析地对竖直高斯 $\exp[-y^2/(2H^2)]$ 做段内平均，而不是用矩形积分去采样一个尺度小于步长的结构：后者会在低分辨率下把薄盘采成条带状伪影。}
+\label{lst:apx-rt-b}
+\lstinputlisting[firstline=20,lastline=49]{code/radiative_transfer.glsl}
+\end{listing}
+
+\begin{listing}[t]
+\caption{主积分循环的\textbf{第三段}（续代码~\ref{lst:apx-rt-b}）：发射、湍流与前向累积辐射转移。光学深度 $\dd\tau = \kappa\,\rho\,\dd l\,\overline{\exp[-y^{2}/2H^{2}]}$ 按 $\rho = (r_{\rm in}/r)^{2}\,w(r)$ 给出，并被 $\min(\cdot,6)$ 截断以保护指数；湍流项在\emph{共转}坐标系中做两尺度噪声推进（噪声坐标的 $z$ 分量取 $0.30\,r$ 是为了让噪声在盘面上近似同相位），因此盘面纹理随开普勒剪切自然缠绕而不是随时间平移。最后两行是整条管线唯一的累积操作：\texttt{color += trans*ab*S} 与 \texttt{trans *= exp(-dtau)}，即式~\eqref{eq:front2back} 的离散形式；源函数 $S$ 已在发出端乘过 $\gfac^{4}$，故此处只做一次集束，不会重复计入。}
+\label{lst:apx-rt-c}
+\lstinputlisting[firstline=50]{code/radiative_transfer.glsl}
+\end{listing}
+
+% --------------------------------------------------------------------------- %
+\subsection{容差扫描的完整数据}\label{app:perftol}
+
+正文第~\ref{sec:perf} 节与第~\ref{sec:discuss-perf} 节引用
+表~\ref{tab:perftol} 共八处，用于说明两件事：
+（一）在 $tol \gtrsim 10^{-2}$ 的区间，单帧成本对容差是幂律响应
+$T - c \propto tol^{-p}$，$12$ 个测点给出 $p = 0.912$、
+对数残差 RMS $0.019$；
+（二）$tol = 0.0075$ 的四组测点（$121.3$、$487.1$、$867.4$、
+$2326.1$\,ms）落在 $n_{\max}=4096$ 的截断之后，
+它们测量的是\emph{预算下界}而不是容差律的外推点，
+因此既不能进入幂律拟合，也不应被解释为“更精细就一定更慢”。
+把这一列单列在附录里而不混入正文图表，是为了让正文的三条标度律
+各自对应一个干净的数据集，而把例外放在可以被逐项核对的地方。
+
+\input{tables/t12_perf_tol}
+
+% --------------------------------------------------------------------------- %
+\subsection{补充插图}\label{app:figs}
+
+下面九张图覆盖了正文未能全部展开的细节。它们按“物理结构 $\to$
+数值截断 $\to$ 辐射过程 $\to$ 成像分类 $\to$ 程序实现”的顺序排列。
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{f03_shadow_radius}
+\caption{阴影半径的两条独立通路。\textbf{左}：闭式
+$\sin\psi_{\rm sh} = \bc\sqrt{1-\rs/r_0}/r_0$ 给出的角半径随观测者半径
+$r_0/M$ 的变化（$\bc = 3\sqrt3M$），从 $r_0 \to \infty$ 处的
+$\arcsin(3\sqrt3 M/r_0)$ 型渐近压到 $r_0 = 4M$ 附近的强场区。
+\textbf{右}：程序在 $1600\times900$ 下实时回读的阴影半径残差
+（单位为像素），横轴为 $r_0/M$。阴影带为 $1\sigma$ 覆盖率量化带
+$\sigma_{\rm px} = 1/(2\sqrt2\cdot24) = 0.0147$\,px，每个测点旁标注
+该点的 $\pm$ 像素残差与 $\pm$ 相对偏差。在修正了式~\eqref{eq:subpix}
+中那处把亚像素估计静默退化为整数扫描的钳位之前，同一组测点的绝对残差
+上界为 $0.46$\,px；修正后降到 $0.10$\,px，即\emph{全部测点都落进
+量化带之内}。残差的\emph{形状}（而不是任何单点数值）是抓到这个缺陷的判据：
+量化带上下界会把残差压成锯齿状，而真实残差应当是平滑的。}
+\label{fig:03}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.72\linewidth]{f04_phase_portrait}
+\caption{零测地线的相平面。横轴为 $u = 1/r$，纵轴为首次积分
+$|\dd u/\dd\varphi| = \sqrt{1/b^2 - u^2 + 2\M u^3}$（式~\eqref{eq:orbit1}），
+四条曲线分别为 $b = 4M < \bc$（被捕获）、$b = \bc$（加粗，
+在 $u = 1/3M$ 处出现二重根，即光子球处的不稳定固定点）、
+$b = 6M$、$b = 10M$、$b = 20M$（逃逸）。相平面的几何把两类轨道
+区分得非常干净：$b < \bc$ 的轨道在有限 $u$ 处仍有非零速度并最终
+穿过 $u = 1/2M$（视界）；$b > \bc$ 的轨道必有一个转折点
+$\dd u/\dd\varphi = 0$，在此处 $u$ 达到最大值后回落，
+对应光线被偏折后逃逸。$b = \bc$ 的临界轨道对初值条件
+（在浮点意义上即对 $tol$）最敏感，这正是第~\ref{sec:v2} 节
+选取近临界轨道作为积分器守恒性判据的原因。}
+\label{fig:04}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.86\linewidth]{f06_escape_radius}
+\caption{有限逃逸半径带来的方向误差。为避免把积分一直做到
+$r\to\infty$，渲染器在 $u < 1/R_{\rm esc}$ 处终止光线并把当前方向
+当作无穷远处的入射方向（式~\eqref{eq:remdef}）。图中给出四条
+冲击参数（$b = 6,\,12,\,20,\,26$\,$M$）下，由该截断引起的背景
+方向误差随 $R_{\rm esc}/M$ 的变化，范围从 $30M$ 拉到 $3000M$。
+竖直实线标出程序默认值 $R_{\rm esc} = 140M$，水平虚线为
+$0.001$\,px 的误差当量（在 $58^\circ$ 视场、$900$\,px 高度下
+$\varepsilon_{\rm px} = 592.72\,\varepsilon_{\rm rad}$，
+即 $0.066^\circ$/px）。默认取值处所有曲线都在 $0.021$\,px 以下，
+这就是把 $r_{\rm esc}$ 有限化是安全的定量依据：误差比一个像素小
+一个数量级以上的角度仍会被看见，但背景恒星的位置误差不会。}
+\label{fig:06}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{f08_disk_efficiency}
+\caption{盘辐射效率的求和规则检验。\textbf{(a)} 从内边界
+$\bin = 6M$ 到 $r$ 的累积辐射功率，分别用三种权重计算：
+Page--Thorne 通量配 $w = E(r)$（盘物质携带的比能，
+即“落入视界的能量已被扣除”的正确记账）、
+Shakura--Sunyaev 牛顿通量配 $w = 1$、以及未加权的坐标面积积分。
+曲线在 $r\to\infty$ 处的极限就是辐射效率 $\eta$：PT 给出
+$5.72\%$，牛顿近似给出 $8.33\%$，而省略权重因子的坐标面积积分
+永远不能闭合——它在同一 $r$ 处比正确值高 $1.916\%$，
+且这个偏差不随 $r$ 增大而消失。
+\textbf{(b)} 尾部残差 $|P(r) - \eta|/\eta$ 与 $12/r$ 参考线，
+说明求和规则以 $O(1/r)$ 收敛；闭式积分与 $4\times10^6$ 格点的
+数值求积相符到 $5\times10^{-11}$（$2\times10^{-14}$ 相对精度），
+因此图 (a) 中的 $5.72\%$ 是数值定义意义上的确定值，
+而不是被离散化污染的量。}
+\label{fig:08}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{f11_radiative_transfer}
+\caption{体积辐射转移的两项基本行为。\textbf{(a)} 前向累积的
+透过率 $1 - e^{-\tau}$：单次穿越（光线只与近侧盘相交一次）、
+两次穿越（近侧直接像与绕行 $-180^\circ$ 后的远侧像叠加，
+此时总透过率由两段光学深度串联给出），以及光学薄极限
+$1-e^{-\tau} \approx \tau$。三者的差别在 $\tau \gtrsim 1$ 后
+才显著，因此正文把光学深度上限钳在 $\dd\tau \le 6$ 是充分的。
+\textbf{(b)} 竖直高斯结构：$H/r = 0.02,\,0.05,\,0.10,\,0.20$
+四种厚度下每个步长内解析平均后的贡献剖面。当 $H/r \ll$ 步长
+覆盖的径向尺度时，矩形采样会系统性地\emph{漏掉}大半发射体积，
+这就是主循环必须在近盘区域把步内切分成 $K=5$ 段、
+并用 $\mathrm{erf}$ 差商对高斯做垂直平均的原因（代码见 A.4 的第四段）。}
+\label{fig:11}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.78\linewidth]{f12_image_orders}
+\caption{视线与赤道面交会的像阶分类（$r_0 = 26M$，视场 $58^\circ$，
+$420\times420$，用 \texttt{inferno} 的四个离散层级着色：
+被视界捕获、一级像、二级像、高阶像）。青色虚线为临界阴影圈
+$\psi_{\rm sh}$。全画幅统计的结果是：高阶像的像素数
+\emph{严格为零}。这一结论与“引力透镜应有无限多像”的科普叙述
+并不矛盾——高阶像对应的冲击参数区间在 $\ln$ 尺度上极窄，
+其像平面区域是紧贴临界曲线的一层厚度远小于像素尺度的窄环，
+因此在任何有限分辨率、有限 $n_{\max}$ 的实现里都不会出现
+（第~\ref{sec:orders} 节）。图~\ref{fig:16} 用同一算法扫描倾角，
+给出逐像素计数版的证据。}
+\label{fig:12}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{f13_lensing_map}
+\caption{源方向映射。同一组天空方向（均匀网格）在
+\textbf{左}（关闭引力透镜）与\textbf{右}（$r_0 = 26M$，开启透镜）
+下成像于像平面，范围 $\pm13M$。右侧的黑盘为阴影
+（红边为解析临界圈），可见靠近临界圈的方向网格被
+\emph{径向拉伸}——原本等间距的方向在像平面上被压到阴影边缘附近，
+这正是“光子环把天空折叠了一次”的几何含义。这张图是对
+第~\ref{sec:deflection} 节解析偏折公式的一次\emph{全域}核对：
+偏差只应出现在网格分辨率不足处，而不应出现系统性的旋转或平移。}
+\label{fig:13}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{f15_lensed_sky}
+\caption{透镜化星场（$320\times180$，视场 $58^\circ$）。
+\textbf{(a)} 平直时空中的星场作为对照；
+\textbf{(b)} $r_0 = 26M$ 下的同一星场。青色虚线标出
+光子环/阴影边界 $\psi_c$；靠近该边界处的恒星像被拉成圆弧，
+构成部分爱因斯坦环。需要强调的是，这张图的可验证内容只有
+\emph{几何}：恒星的位置映射可以由偏折积分逐点复算，
+而恒星的亮度分布是艺术化的，不承担任何物理结论
+（第~\ref{sec:discuss-stars} 节）。把两者分开陈述，
+是为了避免读者把画面的美观误当成物理精度。}
+\label{fig:15}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{f21_app_ui}
+\caption{程序界面（$1440\times820$），六个编号标注对应本文
+第~\ref{sec:impl} 节与第~\ref{sec:viewport} 节讨论的实现要点：
+\textcircled{1} 预设观察条件（倾角、观测者半径、盘的几何与温度）；
+\textcircled{2} 渲染诊断条，含物理读数面板（阴影半径的实测值与
+解析值、GPU 名称、缓冲尺寸、FPS）；
+\textcircled{3} 四组参数滑杆（吸积盘、背景星空、数值积分、成像）；
+\textcircled{4} 内置的阴影半径校验按钮，其返回的数值即
+表~\ref{tab:v3}、\ref{tab:v3b} 与图~\ref{fig:03} 右面板的数据源；
+\textcircled{5} 侧栏收起/展开（\texttt{H} 键），收起后画布占满窗口，
+黑洞阴影圆心仍在主画面的几何中心；
+\textcircled{6} 理论阴影边界的叠加显示（青色虚线），
+用于把渲染结果与解析临界圈直接目视对齐。界面本身也是可复现产物：
+这张图由 \texttt{make\_render\_figures.py} 驱动真实渲染器、
+在无头浏览器中截图并叠加标注得到，而非设计稿。}
+\label{fig:21}
+\end{figure}

@@ -1,0 +1,125 @@
+\section{引言}\label{sec:intro}
+
+\subsection{研究背景}
+
+黑洞是广义相对论最纯粹、也最极端的解。自 2019 年事件视界望远镜（Event Horizon
+Telescope, EHT）发布 M87$^\ast$ 的第一张黑洞图像以来，黑洞成像已经从纯粹的理论思想实验
+变成了可观测的天体物理学分支~\cite{eht2019,eht2022}。M87$^\ast$ 与银心 Sgr~A$^\ast$ 的
+观测结果之所以能够解释，依赖于两个方面的成熟：一是毫米波甚长基线干涉测量在
+$\sim 20\,\mu$as 尺度上重建了源的亮度分布；二是一整套辐射转移与光线追踪工具，
+把给定的时空度规与等离子体模型映射为观测到的图像。
+
+在观测之前，人类就已经能够「看到」黑洞——只不过是通过计算。Luminet 在
+1979 年用手工计算与简单的绘图设备给出了第一个薄盘黑洞图像~\cite{luminet1979}，
+他首次明确指出：黑洞的阴影（当时称之为「黑盘」）角半径在远距离近似下为
+$\bc/r_{0}$，且盘的背面会被引力透镜抬高到盘的正上方，形成一个标志性的
+「上下一体」的结构。这一图像的正确性在 2015 年被 James 等人的全数值计算
+所确认，并因电影《星际穿越》而进入公众视野~\cite{james2015}。此后，
+一系列面向不同物理假设的数值工具被建立起来：
+GRay~\cite{gray2013} 与 GRay2~\cite{gray2} 面向大规模 GPU 并行，
+geokerr~\cite{dexter2009} 用分离变量法给出 Kerr 时空中的半解析光线，
+GYOTO~\cite{gyoto2011} 提供了通用的测地线与辐射转移框架，
+IPOLE~\cite{ipole2016} 与 KORAL~\cite{koral2013} 分别面向 GRMHD 快照的
+快速成像与辐射输运耦合，而 GRay / RAPTOR ~\cite{raptor2019} 等则把
+广义相对论光线追踪推进到实时或准实时的程度。
+
+另一方面，计算机图形学社区独立地发展出了同一类算法。实时光线追踪硬件、
+可编程着色器与 HDR 管线使得「在浏览器里跑一个黑洞」成为可能：rantonels 的
+\texttt{starless} 演示、以及后来的若干 WebGL 复刻，都用几十行片元着色器
+积分施瓦西测地线并叠加程序化星场。这些实现的视觉说服力很高，但它们通常
+面向演示，缺少三样东西：（一）与解析解的定量比对；（二）对吸积盘辐射模型
+的明确选择与文献溯源；（三）对数值误差、性能代价与近似边界的系统刻画。
+换句话说，它们可以被「看」，但不能被「引用」。
+
+本文的目标是填补这一空隙：给出一个兼具演示性与可验证性的施瓦西黑洞
+成像模拟器，并把它的每一个物理与数值选择都写成可复核的命题、公式与实验。
+
+\subsection{相关工作}\label{sec:related}
+
+按建模精度从低到高，可以把既有的黑洞成像实现分为三个层次。
+
+\paragraph{解析/半解析层。}
+Synge~\cite{synge1966} 给出了施瓦西时空中光子在无穷远处的有效发射锥，
+Bardeen~\cite{bardeen1973} 与 Luminet~\cite{luminet1979} 给出了阴影半径与薄盘图像的
+第一批评析结果。Cunningham 与 Bardeen~\cite{cunningham1973} 把 Kerr 时空中的
+辐射转移化为对观测角与径向坐标的二维积分，成为此后二十年的标准工具。
+Chandrasekhar 的专著~\cite{chandrasekhar1983} 系统整理了施瓦西与 Kerr 时空中的
+零测地线第一积分与可积结构。Bozza~\cite{bozza2002} 发展了强场极限下的透镜
+级数展开，为光子环的解析标定提供了骨架。Gralla 与 Lupsasca~\cite{gralla2020}
+以及 Johnson 等人~\cite{johnson2020} 则证明光子环的干涉特征具有普适性。
+本文的着色器并不直接使用这些级数，但我们用它们作为验证基准（第~\ref{sec:verify} 节）。
+
+\paragraph{数值光线追踪层。}
+GRay~\cite{gray2013} 在 GPU 上以二阶—四阶混合格式积分 Kerr 零测地线，
+在 $10^{7}$--$10^{8}$ 像素规模上给出与 geokerr 一致的结果。
+geokerr~\cite{dexter2009} 使用 Carter 常数的分离变量解，在大偏折情形下
+以椭圆积分数值求值，精度极高但需要处理大量分支。
+GYOTO~\cite{gyoto2011} 采用与本文类似的轨道平面约化 + 自适应 RK 方案，
+并把辐射转移抽象为可插拔的「天体」对象。
+\texttt{grtrans}~\cite{grtrans2016} 与 IPOLE~\cite{ipole2016} 关注偏振与
+同步辐射，通常与 GRMHD 快照配套。KORAL~\cite{koral2013} 走的是
+GRMHD + 蒙特卡洛辐射输运的全自洽路线，代价是无法实时。
+Ament 等人~\cite{ament2015} 从图形学角度分析了 GPU 上零测地线积分的
+数值稳定性与性能边界，是本文第~\ref{sec:perf} 节最直接的参照。
+
+\paragraph{实时可视化层。}
+Müller 与其合作者~\cite{muller2010,muller2014} 给出了交互式 Kerr
+可视化的早期尝试；DNGR（Double Negative Gravitational Renderer，
+\cite{james2015}）以电影渲染为目标，单帧耗时以小时计。
+rantonels 的 \texttt{starless} 与若干 WebGL 演示把施瓦西积分器压缩到
+每像素数十次 RK 步，在集成显卡上即可达到交互帧率，但它们不报告
+误差预算，也不区分盘辐射模型的来源。本文属于这一层，但额外补齐了
+与解析解和 CPU 参考实现的逐点比对，以及可复现的性能代价模型。
+
+在吸积盘模型一侧，Shakura 与 Sunyaev~\cite{ss1973} 提出的 $\alpha$ 盘给出了
+牛顿引力下的辐射通量 $F(r)\propto r^{-3}\bigl[1-\sqrt{\bin/r}\bigr]$，
+Novikov 与 Thorne~\cite{nt1973} 把该结果推广到 Kerr 时空的几何薄盘，
+Page 与 Thorne~\cite{pt1974} 给出了其中最关键的一步——由守恒律导出的
+时间平均扭矩积分 $B(r)$，使得通量可以写成不含未知粘性系数的闭式。
+Thorne~\cite{thorne1974} 进一步讨论了盘的结构与边缘边界条件。
+本文同时实现 PT 与 SS 两套剖面并在运行时切换，正是因为二者的差异
+（在峰值区相差 $3$ 倍以上，见第~\ref{sec:disk} 节）具有可观测意义。
+
+\subsection{本文贡献}
+
+本文的主要贡献可归纳为以下五点。
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
+\item \textbf{物理模型的完整推导与自洽实现。} 从施瓦西度规出发，推导零测地线的
+轨道方程、第一积分、临界冲击参数、光子球与静态观测者标架下的阴影角半径；
+并给出 PT 通量的闭式表达及其独立数值核算（$4\times10^{6}$ 格点积分，
+相对误差 $10^{-14}$ 量级，见第~\ref{sec:ntverify} 节与表~\ref{tab:bcheck}）。
+我们同时指出文献中偶见的符号变体会导致 $0.25$--$24.8$ 倍的偏差。
+\item \textbf{数值方法的误差刻画。} 给出 RK4 + 几何自适应步长
+$h\propto tol\cdot u/|\dd u|$ 的完整分析，量化 0.002\,rad 步长下界在
+近视界像素上的主导作用，并用独立的 CPU 双精度积分器
+（\texttt{pytrace.py}）给出 V1--V6 六组验证（第~\ref{sec:verify} 节），其中
+V6 直接检验交互式渐进累积的收敛速度、噪声地板与逐位可重复性。
+\item \textbf{面向实时的 GPU 实现。} 单遍片元着色器完成测地线积分 +
+盘求交 + 辐射转移 + 星场采样，配合 HDR 累积、三级辉光金字塔与 ACES
+影调映射，在集成显卡上维持交互帧率（第~\ref{sec:impl}--\ref{sec:perf} 节）。
+\item \textbf{可复现的实验体系。} 仓库内的 \texttt{paper/tools} 目录包含
+从源码生成全部 18 张表、25 张插图、以及全部验证数据的脚本；
+论文中的每一个数字都可以用一条命令重算（附录~\ref{app:repro}）。
+\item \textbf{物理问题驱动的代码修正。} 在写作本文过程中发现并修正了
+七处实现缺陷：预设系统未做全量基线导致状态残留、预设切换后
+\texttt{showDisk} 未被复位、通量模型开关 \texttt{fluxModel} 未进入累积键
+导致两套剖面在静止累积中混叠（第~\ref{sec:presets} 节），
+盘温度参数 \texttt{diskTemp} 在显示模式下被当作色温而非物理温度使用，
+单帧成本的统计口径在注释与实验之间不一致（第~\ref{sec:perf} 节），
+抖动种子从未随时间推进、且 8\,bit 抖动相位与累积历元不同步，
+使渐进累积在量化台阶上失效（第~\ref{sec:jitter} 节），
+以及阴影半径探针的亚像素边缘估计器被一处钳位静默退化为整数扫描
+（第~\ref{sec:v3} 节，式~\eqref{eq:subpix}）——
+最后这一处是由跨 $r_0$ 扫描的残差\emph{分布形状}抓出来的，
+而不是任何单点测量（第~\ref{sec:r0scan} 节）。
+七处修正均已同步至开源仓库。
+\end{enumerate}
+
+\subsection{本文结构}
+
+第~\ref{sec:theory} 节给出物理模型；第~\ref{sec:numerics} 节给出数值方法；
+第~\ref{sec:impl} 节描述渲染管线与交互实现；第~\ref{sec:verify} 节报告
+六组验证实验；第~\ref{sec:results} 节给出图像结果、参数扫描与性能测量；
+第~\ref{sec:discuss} 节讨论局限与展望；第~\ref{sec:concl} 节总结。
+附录给出符号表、着色器关键片段与完整复现命令。

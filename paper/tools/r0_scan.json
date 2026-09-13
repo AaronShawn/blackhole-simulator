@@ -1,0 +1,53 @@
+{
+  "note": "Observer-distance scan of the numerically traced shadow radius in the shipped app (window.__bh.measure()).",
+  "source": "tools/verify.py",
+  "gpu": "ANGLE (Intel, Intel(R) UHD Graphics (0x000046D2) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "webgl2": true,
+  "width": 1600,
+  "height": 900,
+  "samples": null,
+  "rows": [
+    {
+      "r0": 8,
+      "measured": 552.3333333333334,
+      "analytic": 552.311426874761,
+      "rel": 0.0039663236186076745
+    },
+    {
+      "r0": 12,
+      "measured": 349.375,
+      "analytic": 349.3523455964548,
+      "rel": 0.006484686257508019
+    },
+    {
+      "r0": 20,
+      "measured": 206.45833333333331,
+      "analytic": 206.46340368223943,
+      "rel": -0.0024558099961966852
+    },
+    {
+      "r0": 26,
+      "measured": 158.85416666666666,
+      "analytic": 158.83463932281018,
+      "rel": 0.01229413428943193
+    },
+    {
+      "r0": 40,
+      "measured": 103.52083333333331,
+      "analytic": 103.62238499969644,
+      "rel": -0.09800166861959339
+    },
+    {
+      "r0": 80,
+      "measured": 52.166666666666686,
+      "analytic": 52.17347647768479,
+      "rel": -0.013052246999514827
+    },
+    {
+      "r0": 150,
+      "measured": 27.916666666666686,
+      "analytic": 27.95076181038255,
+      "rel": -0.12198287813106419
+    }
+  ]
+}
