@@ -333,7 +333,8 @@ $3.47\times10^{-5}$\,rad（$b=26\M$），
 $4.19\times10^{-3}$（luma 单位）而不是零，并且 $n=1$ 点
 高达 $3.30\times10^{-2}$——约为平台的 8 倍。
 三个原因层层叠加：（i）\texttt{autoQuality} 没关，
-这台软光栅机器上块均帧率长时间低于 $24$\,fps，
+这台集成显卡机器（Intel UHD，ANGLE/D3D11 硬件路径）上
+块均帧率长时间低于 $24$\,fps，
 于是 \texttt{renderScale} 在\emph{同一轮} schedule 的两次测量之间
 被下调，重新分配了全部渲染目标，受追踪分辨率中途改变；
 （ii）复合通道叠加的抖动用 $u_{\rm frame}=\texttt{frameCount}\bmod1024$

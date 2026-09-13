@@ -1014,7 +1014,7 @@ window.__bh = {
   // requestAnimationFrame rate limit of the host.  All three order statistics
   // are reported; the paper uses ``min`` as its estimator because contention,
   // thermal throttling and scheduler jitter can only add time, never remove
-  // it, whereas ``median`` on a soft-rasterised machine is frequently
+  // it, whereas ``median`` on the integrated-GPU test machine is frequently
   // quantised to a ~2x-coarser level (see paper/tools/diag_taucap.json).
   cost: (n) => {
     const reps = Math.max(1, n | 0);

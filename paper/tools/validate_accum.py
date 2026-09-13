@@ -17,8 +17,9 @@ The first version of this probe reported a frozen-mode plateau of 4.2e-3 and a
 non-reproducible n=1 point of 3.3e-2.  Both were artefacts, and the clean
 design below suppresses all three causes:
 
-  * ``autoQuality`` was left on.  On a soft-rasterised machine the block
-    averages drop below 24 fps for many seconds, so ``renderScale`` walked
+  * ``autoQuality`` was left on.  On the integrated-GPU test machine
+    (Intel UHD via ANGLE/D3D11) the block averages drop below 24 fps for many
+    seconds, so ``renderScale`` walked
     downwards, ``allocateTargets()`` resized every render target and the traced
     resolution changed *between* the measurements of one schedule;
   * the composite pass adds ``grain = 0.010`` of per-pixel dither whose phase

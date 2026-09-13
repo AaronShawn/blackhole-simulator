@@ -460,7 +460,8 @@ WebView2 默认可能选择软件光栅。启动器显式设置
 \texttt{RGBA16F} 与真实 GPU 名称；若因驱动黑名单回落，
 HUD 显示 \texttt{LDR} 与软件渲染器名称。
 本文的所有测量都注明了两者中的哪一个（见 §\ref{sec:perf}：
-性能数据的机器是 Intel UHD 软光栅，这恰是最坏情形）。
+性能数据的机器是 Intel UHD 集显、走 ANGLE/D3D11 \emph{硬件}路径，
+只是算力有限，这恰是最坏情形）。
 
 \subsection{交互界面：中心不变量、全屏预览与滚动条}\label{sec:ui}
 
@@ -532,7 +533,9 @@ Firefox 的 \texttt{scrollbar-\*} 与 Chromium 的
 表~\ref{tab:defaults} 列出出厂参数。其中三处数值值得解释：
 \texttt{tol}$=0.03$ 与 \texttt{maxSteps}$=300$ 是
 \S\ref{sec:perf} 的代价模型给出的交互预算点（在 $1000\times600$
-视口上约 $0.4$\,s/帧的软光栅成本，硬件路径下则为个位数毫秒）；
+视口上约 $0.38$\,s/帧，这是集显实测值，也是本文全部计时数据的
+基准；同一着色器在算力更强的独立显卡上会更快，但本文未做该实测，
+故不给出量化预期）；
 \texttt{escapeR}$=140\,\M$ 由 V5 确定（其方向误差 $<0.021$\,px）；
 \texttt{escapeR} 与 \texttt{tol} 的组合决定了远场步长，
 因此这两个值是被实验挑选的，而不是估计的。

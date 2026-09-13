@@ -71,6 +71,35 @@ def px(x, d=2):
     return "$%+.*f$" % (d, x)
 
 
+_SUP = {
+    "\u2070": "0", "\u00b9": "1", "\u00b2": "2", "\u00b3": "3", "\u2074": "4",
+    "\u2075": "5", "\u2076": "6", "\u2077": "7", "\u2078": "8", "\u2079": "9",
+    "\u207a": "+", "\u207b": "-",
+}
+
+
+def texify(s):
+    """Rewrite literal superscripts into math superscripts for the PDF body.
+
+    Preset names are shown verbatim in the application UI (``T=10\u2077 K``), but the
+    text fonts used by the paper have no U+2077 glyph, so the table build turns
+    any run of superscript characters into ``$^{7}$``.  Without this the
+    compiler only warns and silently drops the character from the table.
+    """
+    out, buf = [], []
+    for ch in s:
+        if ch in _SUP:
+            buf.append(_SUP[ch])
+            continue
+        if buf:
+            out.append("$^{%s}$" % "".join(buf))
+            buf = []
+        out.append(ch)
+    if buf:
+        out.append("$^{%s}$" % "".join(buf))
+    return "".join(out)
+
+
 def w(name, body, caption, label, cols, head, size="\\small",
       align=None, extra=""):
     align = align or ("l" + "r" * (len(head) - 1))
@@ -321,7 +350,8 @@ def t_perf():
          "容差扫描（$n_{\\max}=4096$）。自适应步长 $h\\propto tol\\,u/|\\mathrm{d}u|$，"
          "固定轨迹所需步数 $\\propto 1/tol^{p}$，实测 $p=0.91$。"
          "$tol=0.0075$ 的四组已被 $n_{\\max}=4096$ 截断（工作不再随容差增长），"
-         "其耗时是预算下界而非容差律的外推，故单列于此并在图 22(d) 中标记。",
+         "其耗时是预算下界而非容差律的外推，故单列于此，并在正文图"
+         "$\\ref{fig:22}$ 的 (d) 面板中标记。",
          "tol", "%.4f")
 
 
@@ -466,7 +496,7 @@ def t_presets():
                         for k, v in delta)
         if not txt:
             txt = "--"
-        body.append("%s & %s \\\\" % (name, txt))
+        body.append("%s & %s \\\\" % (texify(name), txt))
         seen += 1
     if seen != 7:
         raise RuntimeError("expected 7 presets, found %d" % seen)
@@ -731,6 +761,60 @@ def t_r0_scan():
 
 
 # --------------------------------------------------------------------------- #
+def t_packaged_ui():
+    """Viewport-centring probe taken from the *packaged* executable.
+
+    The numbers come from ``work/portable/ui_probe.py``, which attaches to a
+    running ``BlackHoleSimulator.exe`` over CDP and reads the same
+    ``window.__bh.measure()`` that the V3/V5 experiments use.  A copy of the
+    record lives in ``tools/packaged_ui.json`` because ``work/`` is not shipped.
+    """
+    d = jload("packaged_ui.json")
+    st = d["states"]
+    rows = [
+        ("open", "侧栏展开"),
+        ("collapsed", "侧栏收起（全屏预览）"),
+        ("key_f", "\\texttt{F} 键全屏"),
+        ("key_h", "\\texttt{H} 键切换预览"),
+        ("escape", "\\texttt{Escape} 还原侧栏"),
+    ]
+    body = []
+    for key, label in rows:
+        r = st[key]
+        body.append(
+            "%s & $%d\\times%d$ & %d & %d & $%+.*f$ & %.4f & %.3f & %.3f \\\\"
+            % (label, r["css"][0], r["css"][1], r["cssLeft"],
+               1 if r["panelCollapsed"] else 0,
+               3, r["centreOffsetPx"], r["shadowPx"],
+               r["radiusBuf"], r["analyticBuf"]))
+    sb = st["scrollbar"]
+    w("t19_packaged_ui.tex", body,
+      "打包版可执行文件中实测的视口中心不变量（$5$ 种状态）。"
+      "画布尺寸为 CSS 像素，$x_{\\rm css}$ 是画布左边缘；"
+      "$\\Delta_{\\rm c}$ 为 \\texttt{measureShadow()} 反解的阴影圆心"
+      "相对画布几何中心的偏差（渲染缓冲像素）；"
+      "$R_{\\rm css}$ 是换算到 CSS 像素的阴影半径——五种状态下"
+      "\\emph{逐位相同}；$R_{\\rm buf}$/$R_{\\rm ana}$ 为当前缓冲分帧下的"
+      "实测半径与该帧解析值，两者之差即 $\\Delta_{\\rm c}$ 之外的"
+      "第二项亚像素校验。探针量化带宽 "
+      "$\\sigma_{\\rm px}=1/(2\\sqrt2\\cdot24)=0.0147$\\,px。"
+      "测量环境：\\texttt{%s}；便携包 SHA256 \\texttt{%s}$\\ldots$。"
+      "同一次探针还回读了侧栏滚动条的样式："
+      "\\texttt{scrollbarWidth=%s}、\\texttt{scrollbarColor=%s}、"
+      "\\texttt{scrollbarGutter=%s}，"
+      "\\texttt{::-webkit-scrollbar} 规则 %d 条。"
+      % (d["gpu"].replace("_", "\\_"), d["exe_zip_sha256"][:16],
+         sb["scrollbarWidth"], sb["scrollbarColor"], sb["scrollbarGutter"],
+         sb["webkitRules"]),
+      "tab:ui-probe", 8,
+      ["状态", "画布 [px]", "$x_{\\rm css}$", "收起",
+       "$\\Delta_{\\rm c}$ [px]", "$R_{\\rm css}$ [px]",
+       "$R_{\\rm buf}$", "$R_{\\rm ana}$"],
+      size="\\footnotesize",
+      align="lrrrrrrr")
+
+
+# --------------------------------------------------------------------------- #
 def main() -> int:
     os.makedirs(OUT, exist_ok=True)
     t_validate()
@@ -742,6 +826,7 @@ def main() -> int:
     t_verify_summary()
     t_subpixel_probe()
     t_r0_scan()
+    t_packaged_ui()
     print("[tbl] all tables written to", OUT)
     return 0
 

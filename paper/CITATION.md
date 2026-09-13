@@ -14,7 +14,7 @@
   year        = {2026},
   month       = {9},
   version     = {1.0.1},
-  note        = {77 页；25 图；18 表。源代码与全部生成脚本：
+  note        = {25 图；19 表。源代码与全部生成脚本：
                  https://github.com/AaronShawn/blackhole-simulator},
   url         = {https://github.com/AaronShawn/blackhole-simulator/blob/main/paper/paper.pdf}
 }

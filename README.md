@@ -18,12 +18,12 @@ gravitational redshift and volumetric radiative transfer. [English README »](RE
 
 *施瓦西黑洞：视界阴影 + 光子环 + 引力透镜后的吸积盘顶面，多普勒集束让接近侧明显更亮更蓝。*
 
-> **配套论文** — [**`paper/paper.pdf`**](paper/paper.pdf)（77 页，A4，中文）
+> **配套论文** — [**`paper/paper.pdf`**](paper/paper.pdf)（77 页，A4，中文，另附 [可编辑 Word 版](paper/paper_editable.docx)，公式为原生 OMML）
 > 《施瓦西黑洞实时成像模拟器：物理建模、数值方法与 GPU 实现》。
 > 从零测地线方程与静态观测者标架推导，到 RK4 误差阶、Page–Thorne 通量积分审计、
 > 近临界缠绕指数、亚像素阴影测量与 GPU 性能标定，**全文每一个数字、每一张图都由
 > [`paper/tools/`](paper/tools) 里的脚本在编译时从源码或实测数据重新生成**；
-> 25 张矢量配图在 [`paper/figures/`](paper/figures)，18 张数据表在 [`paper/tables/`](paper/tables)。
+> 25 张矢量配图在 [`paper/figures/`](paper/figures)，19 张数据表在 [`paper/tables/`](paper/tables)。
 
 ---
 
@@ -54,7 +54,7 @@ gravitational redshift and volumetric radiative transfer. [English README »](RE
 ## 配套论文
 
 [**`paper/paper.pdf`**](paper/paper.pdf) — *施瓦西黑洞实时成像模拟器：物理建模、数值方法与 GPU 实现*
-（77 页 / A4 / 25 图 / 18 表 / 参考文献 26 条）。它不是对代码的概述，而是一份可复核的技术报告：
+（77 页 / A4 / 25 图 / 19 表 / 参考文献 26 条）。它不是对代码的概述，而是一份可复核的技术报告：
 
 | 章 | 内容 | 关键结论（本文档实测） |
 | --- | --- | --- |
@@ -72,7 +72,7 @@ gravitational redshift and volumetric radiative transfer. [English README »](RE
 cd paper
 python tools/measure_probe.py          # 亚像素阴影探针
 python tools/derive_perf.py            # 性能成本模型标定
-python tools/make_tables.py            # 生成 tables/*.tex（18 张表）
+python tools/make_tables.py            # 生成 tables/*.tex（19 张表）
 python tools/make_figures.py; python tools/make_figures2.py   # 25 张矢量图
 python tools/extract_snippets.py       # 从 web/src 抽取附录代码清单
 ```
@@ -287,8 +287,14 @@ b_axis = (L·ŷ)/E        ← 光子角动量在盘自转轴上的分量（不�
 - 双显卡笔记本强制独显：Windows 设置 → 系统 → 显示 → 图形 → 添加 `BlackHoleSimulator.exe` → 高性能，
   或在 NVIDIA 控制面板指定「高性能 NVIDIA 处理器」
 - 右上角角标实时显示 GPU 名称，可直接确认是否在用独显
-- 参考数据：本机测试环境仅有 Intel UHD（无独显），1500×860 窗口、约 1.7 Mpx、默认 300 步 ≈ 20 FPS；
-  同等分辨率下 RTX 级显卡通常有数十倍余量，可把步数提到 800+、分辨率比例 1.5 做静帧画质
+- 参考数据：本机测试环境只有 **Intel UHD 集显**（`ANGLE (Intel, Intel(R) UHD Graphics, D3D11)`，
+  即走 D3D11 的**硬件**路径而非软件光栅化），1500×860 窗口、约 1.7 Mpx、默认 300 步 ≈ 20 FPS；
+  同一着色器在配备 NVIDIA 独立显卡的机器上会更快，但本项目未在独显机器上实测，故不给出量化外推
+- **打包版实测**（`paper/tools/packaged_ui.json`；探针经 CDP 接入 exe 自身的真实渲染循环，
+  而非无头浏览器）：侧栏展开/收起时阴影圆心相对画布几何中心的偏差为 `+0.021` / `+0.042` px，
+  阴影半径以 CSS 像素计恒为 `145.2455` px —— **偏差 ≤ 0.05 px**，即面板开合不会让黑洞偏离主画面中心
+- 侧栏滚动条已主题化（`scrollbar-width: thin` + 半透明滑块 + 全透明轨道 + 5 条 `::-webkit-scrollbar` 规则），
+  不再出现默认的白色系统滚动条；`H` / `F` / `Esc` 三条键位路径与鼠标点击得到逐字段相同的读数
 
 ## 项目结构
 
@@ -312,7 +318,7 @@ b_axis = (L·ŷ)/E        ← 光子角动量在盘自转轴上的分量（不�
 │  ├─ paper.pdf                #   77 页成品 PDF
 │  ├─ paper.tex / parts/*.tex  #   正文（引言…结论 + 附录），tectonic/latexmk 可直接编译
 │  ├─ figures/                 #   25 张矢量 PDF + 同名 200 dpi PNG（figures/png/）
-│  ├─ tables/*.tex             #   18 张数据表，由 make_tables.py 生成
+│  ├─ tables/*.tex             #   19 张数据表，由 make_tables.py 生成
 │  ├─ code/*.lst               #   从 web/src 抽取的附录代码清单
 │  └─ tools/                   #   grref.py 独立 GR 参考实现 + 绘图/表格/实测脚本
 ├─ assets/                     # 图标
@@ -338,6 +344,10 @@ b_axis = (L·ŷ)/E        ← 光子角动量在盘自转轴上的分量（不�
   残差从 `n=1` 到 `n=1024` 下降 9.0 倍（论文 §5.3、图 24）
 - 侧栏开/关两种状态下阴影半径实测值完全一致（`tools/ui_check.py`：1264×900 侧栏开、1600×900 收起，
   三次测量均为 158.8346 px），即**黑洞始终严格居中**
+- **打包版可执行文件实测**（数据：`paper/tools/packaged_ui.json`，探针经 CDP 接入 exe 自身的渲染循环；
+  论文 §6.3、表 18）：侧栏展开 `1150×823` 与全屏预览 `1486×823` 两种状态下，阴影半径以 CSS 像素计
+  均为 `145.2455 px`（逐位相同），圆心偏差仅 `+0.021` / `+0.042 px`，即 ≤0.05 px ≈ 1/20 像素
+  （量化带宽 `σ = 0.0147 px`）；画布横向扩张 336 px（+29%）后竖向视场与盘尺度不变
 - 打包体积约 **35 MB**（含 Python 运行时、WebView2 壳、前端资源与文档）
 - 显示缩放 175%、3000×2000 物理分辨率下界面按逻辑像素正确缩放，画面在侧栏开/关两种状态下均严格居中
 

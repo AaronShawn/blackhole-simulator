@@ -341,7 +341,9 @@ $R_{\rm px}=f_{\rm px}\tan\psi_{\rm sh}$ 比较。
 \includegraphics[width=0.99\linewidth]{figures/f19_app_gallery.pdf}
 \caption{渲染器实拍：六种观察条件下的黑洞图像（程序原样输出，
 仅加边框与说明）。所有帧均为同一份 WebGL2 着色器在
-Intel 集成显卡 + 软件光栅化环境下渲染，冻结在 $t=14\M$，
+Intel UHD 集成显卡上渲染，WebGL 上下文走 ANGLE/D3D11
+\emph{硬件}路径（\texttt{ANGLE (Intel, Intel(R) UHD Graphics,
+Direct3D11 vs\_5\_0 ps\_5\_0, D3D11)}），冻结在 $t=14\M$，
 未做任何后期修图。}
 \label{fig:19}
 \end{figure}
@@ -380,14 +382,60 @@ $i\to58^\circ$ 时多普勒不对称把盘分成明显的一明一暗两半。
 第~\ref{sec:ui} 节说明了实现的处理方式（画布尺寸与面板可见性
 彻底解耦），图~\ref{fig:23} 给出了三种状态下的实拍与阴影圆心轨迹。
 此处把它作为一项\emph{结果}再点明一次，因为它是一个
-「本应平凡、实际却极易出错」的量：
-侧栏展开时画布为 $1024\times640$、侧栏收起（\texttt{H} 键全屏预览）
-时画布扩展到全部视口、窄窗口下画布为 $900\times560$，
-三种状态下由 \texttt{measureShadow()} 回读的阴影圆心
-相对画布几何中心的偏差都是 $0$\,px。
+「本应平凡、实际却极易出错」的量。
+
+与前面各节不同，本小节的数字\emph{不是}在无头浏览器里取的，
+而是在\emph{打包好的可执行文件}内取的：启动
+\texttt{BlackHoleSimulator.exe}，用
+\path{--remote-debugging-port} 接入正在运行的真实渲染循环，
+再用与第~\ref{sec:verify} 节同一套 \texttt{measureShadow()}
+探针回读四边阴影位置并反解圆心与半径
+（脚本 \texttt{work/portable/ui\_probe.py}，原始记录
+\texttt{work/portable/ui\_probe.json}）。这样做是为了排除
+「无头环境掩盖了桌面壳的 DPI 缩放或窗口尺寸处理」这一可能。
+
+表~\ref{tab:ui-probe} 给出五种状态下的读数。三点值得强调：
+
+\begin{enumerate}
+  \item \textbf{圆心不变量。}侧栏展开时画布 CSS 尺寸
+        $1150\times823$（画布左边缘 $x_{\rm css}=336$\,px，
+        即侧栏宽度），收起后为 $1486\times823$（$x_{\rm css}=0$）。
+        两种状态下阴影圆心相对画布几何中心的偏差为
+        $+0.021$\,px 与 $+0.042$\,px，\emph{均不超过 $0.05$\,px}。
+        以第~\ref{sec:verify} 节亚像素探针的量化带宽
+        $\sigma_{\rm px}=1/(2\sqrt2\cdot24)=0.01473$\,px 折算，
+        这两条偏差相当于 $1.4\sigma$ 与 $2.9\sigma$——
+        即画布横向扩张 $336$\,px（$+29\%$）之后，圆心只动了
+        约四十分之一个像素。
+  \item \textbf{半径不变量。}五种状态下阴影半径以 CSS 像素计
+        恒为 $145.2455$\,px，\emph{逐位相同}。这是相机
+        \texttt{fov} 固定、且两种状态画布\emph{高度}都是 $823$\,px
+        的直接后果：全屏预览只改变横向可视范围，
+        不改变垂直视场，因此盘的尺度与阴影的角半径都不动。
+        渲染缓冲的尺度确实变了（$1725\times1234$ 与
+        $1993\times1103$，前者受 \texttt{MAX\_PIXELS}$=2.2\times10^6$
+        的自适应分辨率上限约束），但那是采样密度的变化，
+        不是几何的变化：缓冲半径 $217.771$ 与 $194.708$ 对
+        各自分帧下的解析值 $217.780$、$194.661$ 的相对偏差为
+        $-0.0042\%$ 与 $+0.0245\%$。
+  \item \textbf{键位路径一致。}除鼠标点击侧栏按钮外，\texttt{F}
+        （全屏）、\texttt{H}（预览切换）与 \texttt{Escape}
+        （收起状态下还原）三条键位路径得到的读数与对应的
+        UI 状态逐字段相同——五种状态合并后只出现两个不同的
+        画布尺寸、两个不同的缓冲尺寸和两个不同的
+        \texttt{centreOffsetPx} 取值。
+\end{enumerate}
+
 由于相机 \texttt{target} 恒为原点、\texttt{enablePan} 为
 \texttt{false}，全屏切换前后相机的轨道半径与方位角也逐位相同，
 即用户不会在按 \texttt{H} 的一瞬间感到「视角跳了一下」。
+侧栏滚动条同时被主题化：\texttt{scrollbar-width: thin}、
+滑块颜色 \texttt{rgba(112,145,190,.35)} 配全透明轨道、
+\texttt{scrollbar-gutter: stable}，并附带 $5$ 条
+\texttt{::-webkit-scrollbar} 规则以覆盖 Chromium 内核，
+因此不再出现默认的白色系统滚动条（这也是打包版实测项之一）。
+
+\input{tables/t19_packaged_ui}
 
 % --------------------------------------------------------------------------- %
 \subsection{小结}\label{sec:resultssum}

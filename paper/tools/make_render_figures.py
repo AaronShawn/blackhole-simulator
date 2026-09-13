@@ -50,6 +50,38 @@ from figstyle import plt, C_ACCENT, C_ACCENT2, C_ACCENT3, C_ACCENT4, C_WARM  # n
 APP_DIR = os.path.join(os.path.dirname(HERE), "figures", "app")
 BENCH_JSON = os.path.join(HERE, "render_benchmark.json")
 
+# --------------------------------------------------------------------------- #
+#  printed figure numbers                                                      #
+# --------------------------------------------------------------------------- #
+# The number burnt into the title strip of a montage has to agree with the
+# number LaTeX prints under the float, and LaTeX numbers floats in *order of
+# appearance* -- i.e. by the order of the \input files and of the figure
+# environments inside them, not by the ``fig:NN`` label suffix (the suffix only
+# records which script drew the picture).  The order in paper/paper.tex is
+#
+#     parts/02_theory    f01 f02 f07 f09 f10 ...............  1  2  3  4  5
+#     parts/04_impl      f18 f23 ...........................   6  7
+#     parts/05_verify    f05 f14 f17 f24 ...................   8  9 10 11
+#     parts/06_results   f22 f16 f25 f19 f20 ...............  12 13 14 15 16
+#     parts/09_appendix  f03 f04 f06 f08 f11 f12 f13 f15 f21  17 ........ 25
+#
+# ``check_fignum.py`` re-derives this table from the sources and fails when it
+# drifts, so inserting a figure in the middle of the paper is caught here
+# instead of silently mislabelling a published picture.
+FIG_NUM = {
+    "f01": 1,  "f02": 2,  "f03": 17, "f04": 18, "f05": 8,  "f06": 19,
+    "f07": 3,  "f08": 20, "f09": 4,  "f10": 5,  "f11": 21, "f12": 22,
+    "f13": 23, "f14": 9,  "f15": 24, "f16": 13, "f17": 10, "f18": 6,
+    "f19": 15, "f20": 16, "f21": 25, "f22": 12, "f23": 7,  "f24": 11,
+    "f25": 14,
+}
+
+
+def fig_title(tag, text):
+    """Title strip with the *printed* number, e.g. ``图 15  渲染器实拍…``."""
+    return "图 %d  %s" % (FIG_NUM[tag], text)
+
+
 CHROME_ARGS = [
     "--ignore-gpu-blocklist",
     "--enable-unsafe-swiftshader",
@@ -245,9 +277,12 @@ def f19_gallery(page):
                          ["window.__bh.setTime(14.0)"], wait=4.5)
         tiles.append({"img": np.asarray(img), "name": name, "params": params})
     fig = montage(7.4,
-                  "图 19  渲染器实拍：六种观察条件下的黑洞图像（程序原样输出，仅加边框与说明）",
+                  fig_title("f19",
+                            "渲染器实拍：六种观察条件下的黑洞图像"
+                            "（程序原样输出，仅加边框与说明）"),
                   tiles, 3, 2, cap_in=0.38, gap_in=0.30,
-                  note="所有帧均为同一份 WebGL2 代码在 Intel 集成显卡 + 软件光栅化环境下渲染；"
+                  note="所有帧均为同一份 WebGL2 代码在 Intel UHD 集成显卡上渲染，"
+                       "WebGL 上下文走 ANGLE/D3D11 硬件路径（无 GPU 黑名单回落）；"
                        "冻结坐标时间 t = 14 M，未做任何后期修图")
     return S.save(fig, "f19_app_gallery")
 
@@ -277,7 +312,9 @@ def f20_sweep(page):
                           "name": "i = %.0f° ,  T = %.1f×10³ K" % (elev, temp / 1e3),
                           "params": "r₀ = 24 M · 400 步 · 曝光 %.2f" % SWEEP_EXPOSURE[temp]})
     fig = montage(7.4,
-                  "图 20  参数扫描：视线仰角 i × 峰值温度 T 的九宫格（同一观测者半径 r₀ = 24 M）",
+                  fig_title("f20",
+                            "参数扫描：视线仰角 i × 峰值温度 T 的九宫格"
+                            "（同一观测者半径 r₀ = 24 M）"),
                   tiles, 3, 3, cap_in=0.27, gap_in=0.14, top_in=0.30, bottom_in=0.28,
                   note="左上→右下为 i 增大、T 增大；行内颜色差异来自 Planck 谱与显示色标的映射，"
                        "行间差异来自视线上盘像数目的变化（i → 0 时前后面近似重合）")
@@ -375,7 +412,9 @@ def f21_ui(page):
                  linespacing=1.42)
 
     fig.text(0.5, (fig_h - top_in * 0.46) / fig_h,
-             "图 21  程序界面（1440×820 窗口，侧栏展开）：物理读数、内置阴影半径校验与全屏预览入口",
+             fig_title("f21",
+                       "程序界面（1440×820 窗口，侧栏展开）：物理读数、"
+                       "内置阴影半径校验与全屏预览入口"),
              ha="center", va="center", fontsize=8.6, color="white", weight="bold")
     fig.text(0.5, (bottom_in - 0.17) / fig_h,
              "编号 1–6 与上方截图中的对应位置一一对应；界面文字为程序原样输出，未做任何改写",
@@ -401,7 +440,9 @@ def f23_layout(page):
     tiles.append({"img": np.asarray(img), "name": "窄窗口 · 900×560",
                   "params": "画布 %s · 中心不变、视野自适应" % info["traced"]})
     fig = montage(7.4,
-                  "图 23  视口自适应：侧栏展开 / 收起全屏 / 窄窗口三种情形下黑洞始终居中",
+                  fig_title("f23",
+                            "视口自适应：侧栏展开 / 收起全屏 / 窄窗口"
+                            "三种情形下黑洞始终居中"),
                   tiles, 3, 1, cap_in=0.44, gap_in=0.00, top_in=0.32, bottom_in=0.28,
                   note="相机以轨道控制器给出的球坐标 (r₀, i, φ) 定位，画面中心恒为原点方向；"
                        "改变侧栏与窗口尺寸只改变视口，不移动视线")
@@ -711,8 +752,8 @@ def f22_bench(rows):
 
     gpu = rows[0]["gpu"]
     fig.text(0.5, 0.992,
-             "图 22  渲染代价分解：像素线性律、步数饱和律与容差幂律"
-             "（Chromium 无头模式，窗口 1000×600，侧栏收起）",
+             fig_title("f22", "渲染代价分解：像素线性律、步数饱和律与容差幂律"
+                              "（Chromium 无头模式，窗口 1000×600，侧栏收起）"),
              ha="center", va="top", fontsize=8.2, color="white", weight="bold")
     note = ("每组把一帧渲染进离屏目标并强制 GPU 回读，取 7 次同步耗时（墙钟）的"
             "最小值——最小值是微基准的标准估计量，争用与降频只会加时；为抵消被动"
@@ -722,7 +763,7 @@ def f22_bench(rows):
             "最大 %.1f%%。tol = 0.0075 的四组被 n_max = 4096 截断（工作不再随"
             "容差增长），故按“预算耗尽”单列，其中满视口的 2326 ms 是模型外推值的 "
             "%.1f 倍——这正是论文第 7.4 节讨论的步长下界饱和效应。GPU 报告名：%s 。"
-            "该机为 Intel 集成显卡 + 软件光栅化（4 逻辑核），k、c 只适用于本机，"
+            "该机为 Intel UHD 集成显卡、ANGLE/D3D11 硬件路径（4 逻辑核），k、c 只适用于本机，"
             "但三条标度律的形状与硬件无关；在 NVIDIA 独立显卡上跑同一扫描即可"
             "换算出该硬件的 k、c。"
             % (len(rows), k, c, p, len(valid), rms,

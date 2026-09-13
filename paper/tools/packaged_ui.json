@@ -1,0 +1,120 @@
+{
+  "note": "Produced by work/portable/ui_probe.py: the probe is attached over CDP to the *packaged* BlackHoleSimulator.exe and reads window.__bh.measure() in the real desktop shell. Copy kept here (outside the git-ignored work/ tree) so paper/tools/make_tables.py can regenerate t19_packaged_ui.tex from the shipped data.",
+  "exe_zip_sha256": "3F10FCD80FD71165815E12A4729434D94D41E2C7F02D5E1350C3D381263A923C",
+  "gpu": "ANGLE (Intel, Intel(R) UHD Graphics (0x000046D2) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "states": {
+    "open": {
+      "css": [
+        1150,
+        823
+      ],
+      "cssLeft": 336,
+      "buf": [
+        1725,
+        1234
+      ],
+      "centreBuf": 862.521,
+      "halfBuf": 862.5,
+      "centreOffsetPx": 0.021,
+      "radiusBuf": 217.771,
+      "analyticBuf": 217.78,
+      "relPct": -0.0042,
+      "sigmaPx": 0.014731391274719738,
+      "samples": 24,
+      "panelCollapsed": false,
+      "shadowPx": 145.2455
+    },
+    "collapsed": {
+      "css": [
+        1486,
+        823
+      ],
+      "cssLeft": 0,
+      "buf": [
+        1993,
+        1103
+      ],
+      "centreBuf": 996.542,
+      "halfBuf": 996.5,
+      "centreOffsetPx": 0.042,
+      "radiusBuf": 194.708,
+      "analyticBuf": 194.661,
+      "relPct": 0.0245,
+      "sigmaPx": 0.014731391274719738,
+      "samples": 24,
+      "panelCollapsed": true,
+      "shadowPx": 145.2455
+    },
+    "key_f": {
+      "css": [
+        1150,
+        823
+      ],
+      "cssLeft": 336,
+      "buf": [
+        1725,
+        1234
+      ],
+      "centreBuf": 862.521,
+      "halfBuf": 862.5,
+      "centreOffsetPx": 0.021,
+      "radiusBuf": 217.771,
+      "analyticBuf": 217.78,
+      "relPct": -0.0042,
+      "sigmaPx": 0.014731391274719738,
+      "samples": 24,
+      "panelCollapsed": false,
+      "shadowPx": 145.2455
+    },
+    "key_h": {
+      "css": [
+        1486,
+        823
+      ],
+      "cssLeft": 0,
+      "buf": [
+        1993,
+        1103
+      ],
+      "centreBuf": 996.542,
+      "halfBuf": 996.5,
+      "centreOffsetPx": 0.042,
+      "radiusBuf": 194.708,
+      "analyticBuf": 194.661,
+      "relPct": 0.0245,
+      "sigmaPx": 0.014731391274719738,
+      "samples": 24,
+      "panelCollapsed": true,
+      "shadowPx": 145.2455
+    },
+    "escape": {
+      "css": [
+        1150,
+        823
+      ],
+      "cssLeft": 336,
+      "buf": [
+        1725,
+        1234
+      ],
+      "centreBuf": 862.521,
+      "halfBuf": 862.5,
+      "centreOffsetPx": 0.021,
+      "radiusBuf": 217.771,
+      "analyticBuf": 217.78,
+      "relPct": -0.0042,
+      "sigmaPx": 0.014731391274719738,
+      "samples": 24,
+      "panelCollapsed": false,
+      "shadowPx": 145.2455
+    },
+    "scrollbar": {
+      "scrollbarWidth": "thin",
+      "scrollbarColor": "rgba(112, 145, 190, 0.35) rgba(0, 0, 0, 0)",
+      "scrollbarGutter": "stable",
+      "webkitRules": 5,
+      "overflowY": "auto",
+      "panelWidth": 0
+    }
+  }
+}
